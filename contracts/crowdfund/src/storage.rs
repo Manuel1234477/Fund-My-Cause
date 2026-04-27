@@ -48,3 +48,9 @@ pub const KEY_RATE_LIMIT: Symbol = soroban_sdk::symbol_short!("RATELIMIT");
 pub const KEY_INSURANCE: Symbol = soroban_sdk::symbol_short!("INSURE");
 /// Storage key for total insurance fees collected
 pub const KEY_INSURANCE_POOL: Symbol = soroban_sdk::symbol_short!("INSPOOL");
+/// Storage key for campaign category
+pub const KEY_CATEGORY: Symbol = soroban_sdk::symbol_short!("CATEGORY");
+/// Storage key for vesting schedule
+pub const KEY_VESTING: Symbol = soroban_sdk::symbol_short!("VESTING");
+/// Storage key for goal adjustment history
+pub const KEY_GOAL_HISTORY: Symbol = soroban_sdk::symbol_short!("GHIST");

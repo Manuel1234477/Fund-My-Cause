@@ -215,6 +215,30 @@ pub enum DataKey {
     PartialRefund(Address),
     /// Insurance fee paid by a specific contributor
     InsuranceFee(Address),
+    /// Whitelist flag for a specific address
+    Whitelist(Address),
+    /// Blacklist flag for a specific address
+    Blacklist(Address),
+    /// Whitelist-only mode flag
+    WhitelistOnly,
+    /// Delegation for a specific address
+    Delegation(Address),
+    /// Delegated contribution amount for a specific address
+    DelegatedContribution(Address),
+    /// Campaign template
+    Template,
+    /// Emergency lock time
+    EmergencyLockTime,
+    /// Rate limit timestamp for a specific address
+    RateLimitTimestamp(Address),
+    /// Rate limit amount for a specific address
+    RateLimitAmount(Address),
+    /// Matching configuration
+    MatchingConfig,
+    /// Total matched amount
+    TotalMatched,
+    /// Penalty basis points
+    PenaltyBps,
 }
 
 /// Recurring contribution plan.
