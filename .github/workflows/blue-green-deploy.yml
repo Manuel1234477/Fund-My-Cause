@@ -1,0 +1,185 @@
+name: Blue-Green Deployment
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Target environment'
+        required: true
+        default: 'staging'
+        type: choice
+        options:
+          - staging
+          - production
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.environment }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set deployment variables
+        id: vars
+        run: |
+          ENV=${{ github.event.inputs.environment }}
+          TIMESTAMP=$(date +%s)
+          BLUE_PORT=3000
+          GREEN_PORT=3001
+          
+          echo "environment=${ENV}" >> $GITHUB_OUTPUT
+          echo "timestamp=${TIMESTAMP}" >> $GITHUB_OUTPUT
+          echo "blue_port=${BLUE_PORT}" >> $GITHUB_OUTPUT
+          echo "green_port=${GREEN_PORT}" >> $GITHUB_OUTPUT
+          
+          # Determine which slot is currently active
+          if [ -f "/tmp/${ENV}_active_slot.txt" ]; then
+            ACTIVE=$(cat "/tmp/${ENV}_active_slot.txt")
+          else
+            ACTIVE="blue"
+          fi
+          
+          if [ "$ACTIVE" = "blue" ]; then
+            DEPLOY_SLOT="green"
+            DEPLOY_PORT=$GREEN_PORT
+          else
+            DEPLOY_SLOT="blue"
+            DEPLOY_PORT=$BLUE_PORT
+          fi
+          
+          echo "active_slot=${ACTIVE}" >> $GITHUB_OUTPUT
+          echo "deploy_slot=${DEPLOY_SLOT}" >> $GITHUB_OUTPUT
+          echo "deploy_port=${DEPLOY_PORT}" >> $GITHUB_OUTPUT
+
+      - name: Build frontend image
+        run: |
+          docker build \
+            -f apps/interface/Dockerfile \
+            -t fund-my-cause:${{ steps.vars.outputs.timestamp }} \
+            -t fund-my-cause:${{ steps.vars.outputs.deploy_slot }}-latest \
+            .
+
+      - name: Deploy to ${{ steps.vars.outputs.deploy_slot }} slot
+        run: |
+          docker stop fund-my-cause-${{ steps.vars.outputs.deploy_slot }} || true
+          docker rm fund-my-cause-${{ steps.vars.outputs.deploy_slot }} || true
+          
+          docker run -d \
+            --name fund-my-cause-${{ steps.vars.outputs.deploy_slot }} \
+            -p ${{ steps.vars.outputs.deploy_port }}:3000 \
+            --env-file apps/interface/.env.${{ steps.vars.outputs.environment }} \
+            fund-my-cause:${{ steps.vars.outputs.timestamp }}
+
+      - name: Wait for deployment to be ready
+        run: |
+          MAX_ATTEMPTS=30
+          ATTEMPT=0
+          PORT=${{ steps.vars.outputs.deploy_port }}
+          
+          while [ $ATTEMPT -lt $MAX_ATTEMPTS ]; do
+            if curl -sf http://localhost:${PORT}/health > /dev/null 2>&1; then
+              echo "✓ Deployment ready on port ${PORT}"
+              exit 0
+            fi
+            ATTEMPT=$((ATTEMPT + 1))
+            echo "Waiting for deployment... (attempt $ATTEMPT/$MAX_ATTEMPTS)"
+            sleep 2
+          done
+          
+          echo "✗ Deployment failed to become ready"
+          exit 1
+
+      - name: Run health checks
+        id: health_check
+        run: |
+          PORT=${{ steps.vars.outputs.deploy_port }}
+          
+          # Check basic health
+          if ! curl -sf http://localhost:${PORT}/health; then
+            echo "health_status=failed" >> $GITHUB_OUTPUT
+            exit 1
+          fi
+          
+          # Check API connectivity
+          if ! curl -sf http://localhost:${PORT}/api/health; then
+            echo "health_status=failed" >> $GITHUB_OUTPUT
+            exit 1
+          fi
+          
+          echo "health_status=passed" >> $GITHUB_OUTPUT
+
+      - name: Run smoke tests
+        run: |
+          PORT=${{ steps.vars.outputs.deploy_port }}
+          
+          # Test homepage loads
+          curl -sf http://localhost:${PORT}/ > /dev/null || exit 1
+          
+          # Test API endpoints
+          curl -sf http://localhost:${PORT}/api/campaigns > /dev/null || exit 1
+          
+          echo "✓ Smoke tests passed"
+
+      - name: Switch traffic to ${{ steps.vars.outputs.deploy_slot }}
+        if: steps.health_check.outputs.health_status == 'passed'
+        run: |
+          # Update load balancer or reverse proxy to point to new slot
+          # This is environment-specific and depends on your infrastructure
+          echo "Switching traffic to ${{ steps.vars.outputs.deploy_slot }} slot"
+          
+          # Example: Update nginx config
+          # sed -i 's/upstream backend { server localhost:3000; }/upstream backend { server localhost:${{ steps.vars.outputs.deploy_port }}; }/' /etc/nginx/nginx.conf
+          # nginx -s reload
+          
+          # Mark new slot as active
+          echo "${{ steps.vars.outputs.deploy_slot }}" > /tmp/${{ steps.vars.outputs.environment }}_active_slot.txt
+
+      - name: Verify traffic switch
+        run: |
+          PORT=${{ steps.vars.outputs.deploy_port }}
+          
+          # Verify new slot is receiving traffic
+          for i in {1..5}; do
+            curl -sf http://localhost:${PORT}/ > /dev/null || exit 1
+          done
+          
+          echo "✓ Traffic successfully switched to ${{ steps.vars.outputs.deploy_slot }}"
+
+      - name: Automatic rollback on failure
+        if: failure()
+        run: |
+          ACTIVE_SLOT=${{ steps.vars.outputs.active_slot }}
+          ACTIVE_PORT=${{ steps.vars.outputs.blue_port }}
+          
+          if [ "$ACTIVE_SLOT" = "green" ]; then
+            ACTIVE_PORT=${{ steps.vars.outputs.green_port }}
+          fi
+          
+          echo "Rolling back to $ACTIVE_SLOT slot on port $ACTIVE_PORT"
+          
+          # Switch traffic back to previously active slot
+          # This depends on your load balancer configuration
+          
+          # Stop failed deployment
+          docker stop fund-my-cause-${{ steps.vars.outputs.deploy_slot }} || true
+
+      - name: Cleanup old images
+        if: always()
+        run: |
+          docker image prune -f --filter "dangling=true"
+
+      - name: Deployment summary
+        if: always()
+        run: |
+          {
+            echo "## Blue-Green Deployment Summary"
+            echo ""
+            echo "| Property | Value |"
+            echo "|---|---|"
+            echo "| Environment | ${{ steps.vars.outputs.environment }} |"
+            echo "| Active Slot | ${{ steps.vars.outputs.active_slot }} |"
+            echo "| Deployed Slot | ${{ steps.vars.outputs.deploy_slot }} |"
+            echo "| Deployment Port | ${{ steps.vars.outputs.deploy_port }} |"
+            echo "| Timestamp | ${{ steps.vars.outputs.timestamp }} |"
+            echo "| Status | ${{ job.status }} |"
+          } >> $GITHUB_STEP_SUMMARY

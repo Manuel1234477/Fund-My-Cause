@@ -5,10 +5,12 @@
 mod errors;
 mod storage;
 mod types;
+mod validation;
 
 pub use errors::ContractError;
-pub use storage::{CONTRACT_VERSION, KEY_ADMIN, KEY_CONTRIBS, KEY_CREATOR, KEY_DEADLINE, KEY_DESC, KEY_GOAL, KEY_MAX, KEY_MIN, KEY_PLATFORM, KEY_SOCIAL, KEY_STATUS, KEY_TITLE, KEY_TOKEN, KEY_TOTAL, KEY_INSURANCE, KEY_INSURANCE_POOL};
+pub use storage::{CONTRACT_VERSION, KEY_ADMIN, KEY_CONTRIBS, KEY_CREATOR, KEY_DEADLINE, KEY_DESC, KEY_GOAL, KEY_MAX, KEY_MIN, KEY_PLATFORM, KEY_SOCIAL, KEY_STATUS, KEY_TITLE, KEY_TOKEN, KEY_TOTAL, KEY_INSURANCE, KEY_INSURANCE_POOL, KEY_CATEGORY, KEY_VESTING, KEY_GOAL_HISTORY};
 pub use types::{CampaignInfo, CampaignStats, DataKey, PlatformConfig, Status, InsuranceConfig};
+pub use validation::*;
 
 use soroban_sdk::{contract, contractimpl, token, Address, Env, String, Vec};
 

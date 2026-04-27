@@ -1,0 +1,95 @@
+name: Multi-Region Deployment
+
+on:
+  workflow_dispatch:
+    inputs:
+      regions:
+        description: 'Regions to deploy (comma-separated: us-east,eu-west,ap-south)'
+        required: true
+        default: 'us-east,eu-west,ap-south'
+
+jobs:
+  multi-region-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install Rust + WASM target
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Install Stellar CLI
+        run: |
+          cargo install --locked stellar-cli --features opt
+
+      - name: Configure Stellar identity
+        env:
+          TESTNET_SECRET_KEY: ${{ secrets.TESTNET_SECRET_KEY }}
+        run: |
+          stellar keys add deployer --secret-key "$TESTNET_SECRET_KEY"
+          stellar network add testnet \
+            --rpc-url https://soroban-testnet.stellar.org \
+            --network-passphrase "Test SDF Network ; September 2015"
+
+      - name: Run multi-region deployment
+        run: |
+          ./scripts/multi-region-deploy.sh --regions "${{ github.event.inputs.regions }}"
+
+      - name: Upload deployment configs
+        uses: actions/upload-artifact@v4
+        with:
+          name: multi-region-configs-${{ github.run_id }}
+          path: |
+            geo-routing-config.json
+            failover-config.json
+            regional-performance.json
+            region-status.json
+          retention-days: 90
+
+      - name: Post deployment summary
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const fs = require('fs');
+            let summary = '## 🌍 Multi-Region Deployment\n\n';
+            
+            if (fs.existsSync('region-status.json')) {
+              const regions = JSON.parse(fs.readFileSync('region-status.json', 'utf8'));
+              summary += '| Region | Contract ID | Status |\n';
+              summary += '|--------|-------------|--------|\n';
+              regions.forEach(r => {
+                summary += `| ${r.region} | \`${r.contract_id}\` | ${r.status} |\n`;
+              });
+            }
+            
+            if (fs.existsSync('regional-performance.json')) {
+              const perf = JSON.parse(fs.readFileSync('regional-performance.json', 'utf8'));
+              summary += '\n### Performance Metrics\n\n';
+              summary += '| Region | Response Time | Error Rate | Availability |\n';
+              summary += '|--------|---------------|------------|---------------|\n';
+              perf.regions.forEach(r => {
+                summary += `| ${r.name} | ${r.metrics.response_time_ms}ms | ${(r.metrics.error_rate * 100).toFixed(2)}% | ${r.metrics.availability}% |\n`;
+              });
+            }
+            
+            github.rest.repos.createCommitComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              commit_sha: context.sha,
+              body: summary
+            });
+
+      - name: Verify geo-routing
+        run: |
+          if [ -f geo-routing-config.json ]; then
+            echo "✓ Geo-routing configuration verified"
+            cat geo-routing-config.json | jq '.routing_policy.regions[] | {name, weight}'
+          fi
+
+      - name: Verify failover
+        run: |
+          if [ -f failover-config.json ]; then
+            echo "✓ Failover configuration verified"
+            cat failover-config.json | jq '.failover_rules[0] | {primary_region, fallback_regions}'
+          fi

@@ -1,0 +1,50 @@
+name: Automated Backup
+
+on:
+  schedule:
+    # Run daily at 2 AM UTC
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+    inputs:
+      action:
+        description: 'Backup action'
+        required: true
+        default: 'create'
+        type: choice
+        options:
+          - create
+          - list
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Create backup
+        if: github.event.inputs.action != 'list'
+        run: ./scripts/backup.sh
+
+      - name: List backups
+        if: github.event.inputs.action == 'list'
+        run: ./scripts/backup.sh --list
+
+      - name: Upload backup artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backups-${{ github.run_id }}
+          path: .backups/
+          retention-days: 30
+
+      - name: Notify backup completion
+        if: success()
+        run: |
+          echo "::notice title=Backup Completed::Daily backup has been created and archived."
+
+      - name: Alert on backup failure
+        if: failure()
+        run: |
+          echo "::error title=Backup Failed::Backup creation failed. Review logs and take manual action if needed."

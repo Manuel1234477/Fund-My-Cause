@@ -166,14 +166,18 @@ Save the printed `Contract ID` and `Registry ID` — you'll need them in fronten
 
 ### 4. Configure frontend environment
 
-Create `apps/interface/.env.local`:
+Use the environment switcher script:
 
 ```bash
-NEXT_PUBLIC_CROWDFUND_CONTRACT_ID=<CONTRACT_ID>
-NEXT_PUBLIC_REGISTRY_CONTRACT_ID=<REGISTRY_ID>
-NEXT_PUBLIC_SOROBAN_RPC_URL=https://soroban-testnet.stellar.org
-NEXT_PUBLIC_NETWORK_PASSPHRASE=Test SDF Network ; September 2015
+# Switch to development environment
+./scripts/switch-env.sh development
+
+# Or manually create .env.local
+cp apps/interface/.env.example apps/interface/.env.local
+# Edit .env.local with your contract IDs
 ```
+
+For detailed configuration options, see [docs/environment-config.md](./docs/environment-config.md).
 
 ### 5. Run the frontend
 

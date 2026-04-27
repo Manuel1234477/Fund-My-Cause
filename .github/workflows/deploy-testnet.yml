@@ -71,6 +71,18 @@ jobs:
             --social_links "null" \
             --platform_config null
 
+      - name: Verify crowdfund contract
+        env:
+          CONTRACT_ID: ${{ steps.deploy_crowdfund.outputs.contract_id }}
+        run: |
+          ./scripts/verify-contract.sh "$CONTRACT_ID" testnet
+
+      - name: Verify registry contract
+        env:
+          REGISTRY_ID: ${{ steps.deploy_registry.outputs.registry_id }}
+        run: |
+          ./scripts/verify-contract.sh "$REGISTRY_ID" testnet
+
       - name: Write deployment summary
         env:
           CONTRACT_ID: ${{ steps.deploy_crowdfund.outputs.contract_id }}
