@@ -1,0 +1,205 @@
+name: Deploy to Mainnet
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type "deploy-mainnet" to confirm'
+        required: true
+      version_tag:
+        description: "Version tag for this deployment (e.g. v1.2.0)"
+        required: true
+
+concurrency:
+  group: mainnet-deploy
+  cancel-in-progress: false
+
+jobs:
+  # ── Gate: validate manual confirmation ──────────────────────────────────────
+  validate:
+    name: Validate inputs
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check confirmation string
+        run: |
+          if [ "${{ github.event.inputs.confirm }}" != "deploy-mainnet" ]; then
+            echo "ERROR: confirmation string does not match. Aborting."
+            exit 1
+          fi
+
+  # ── Gate: require two independent approvals via GitHub Environments ──────────
+  approval:
+    name: Await deployment approval
+    needs: validate
+    runs-on: ubuntu-latest
+    environment: mainnet          # configure 2 required reviewers in repo settings
+    steps:
+      - run: echo "Deployment approved."
+
+  # ── Pre-deployment checks ────────────────────────────────────────────────────
+  pre-checks:
+    name: Pre-deployment checks
+    needs: approval
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Build contracts
+        run: cargo build --release --target wasm32-unknown-unknown
+
+      - name: Contract size check
+        run: |
+          for wasm in target/wasm32-unknown-unknown/release/*.wasm; do
+            name=$(basename "$wasm")
+            size=$(wc -c < "$wasm")
+            echo "$name: ${size} bytes"
+            if [ "$size" -gt 65536 ]; then
+              echo "ERROR: $name (${size} bytes) exceeds 64 KB Soroban limit."
+              exit 1
+            fi
+          done
+
+      - name: Run tests
+        run: cargo test --workspace
+
+      - name: Verify required secrets are set
+        run: |
+          if [ -z "${{ secrets.MAINNET_SECRET_KEY }}" ]; then
+            echo "ERROR: MAINNET_SECRET_KEY secret is not set."
+            exit 1
+          fi
+
+  # ── Build & store artifacts ──────────────────────────────────────────────────
+  build:
+    name: Build WASM artifacts
+    needs: pre-checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Build optimized WASM
+        run: cargo build --release --target wasm32-unknown-unknown
+
+      - name: Upload WASM artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: mainnet-wasm-${{ github.event.inputs.version_tag }}
+          path: target/wasm32-unknown-unknown/release/*.wasm
+          retention-days: 90
+
+  # ── Deploy ───────────────────────────────────────────────────────────────────
+  deploy:
+    name: Deploy to Mainnet
+    needs: build
+    runs-on: ubuntu-latest
+    outputs:
+      contract_id: ${{ steps.deploy_crowdfund.outputs.contract_id }}
+      registry_id: ${{ steps.deploy_registry.outputs.registry_id }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download WASM artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: mainnet-wasm-${{ github.event.inputs.version_tag }}
+          path: wasm
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Stellar CLI
+        run: cargo install --locked stellar-cli --features opt
+
+      - name: Configure mainnet identity
+        env:
+          MAINNET_SECRET_KEY: ${{ secrets.MAINNET_SECRET_KEY }}
+        run: |
+          stellar keys add deployer --secret-key "$MAINNET_SECRET_KEY"
+          stellar network add mainnet \
+            --rpc-url https://soroban.stellar.org \
+            --network-passphrase "Public Global Stellar Network ; September 2015"
+
+      - name: Deploy registry contract
+        id: deploy_registry
+        run: |
+          REGISTRY_ID=$(stellar contract deploy \
+            --wasm wasm/registry.wasm \
+            --network mainnet \
+            --source deployer)
+          echo "registry_id=$REGISTRY_ID" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy crowdfund contract
+        id: deploy_crowdfund
+        run: |
+          CONTRACT_ID=$(stellar contract deploy \
+            --wasm wasm/crowdfund.wasm \
+            --network mainnet \
+            --source deployer)
+          echo "contract_id=$CONTRACT_ID" >> "$GITHUB_OUTPUT"
+
+      - name: Write deployment summary
+        env:
+          CONTRACT_ID: ${{ steps.deploy_crowdfund.outputs.contract_id }}
+          REGISTRY_ID: ${{ steps.deploy_registry.outputs.registry_id }}
+          VERSION: ${{ github.event.inputs.version_tag }}
+        run: |
+          echo "## 🚀 Mainnet Deployment — $VERSION" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Contract | ID |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|---|---|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| crowdfund | \`$CONTRACT_ID\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| registry  | \`$REGISTRY_ID\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "Deployed by @${{ github.actor }} at $(date -u)" >> "$GITHUB_STEP_SUMMARY"
+
+  # ── Notify ───────────────────────────────────────────────────────────────────
+  notify:
+    name: Send deployment notification
+    needs: deploy
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Post GitHub release comment
+        uses: actions/github-script@v7
+        env:
+          CONTRACT_ID: ${{ needs.deploy.outputs.contract_id }}
+          REGISTRY_ID: ${{ needs.deploy.outputs.registry_id }}
+          VERSION: ${{ github.event.inputs.version_tag }}
+          STATUS: ${{ needs.deploy.result }}
+        with:
+          script: |
+            const status = process.env.STATUS === 'success' ? '✅ succeeded' : '❌ failed';
+            const body = [
+              `## Mainnet Deployment ${status} — ${process.env.VERSION}`,
+              '',
+              `Triggered by @${context.actor}`,
+              '',
+              '| Contract | ID |',
+              '|---|---|',
+              `| crowdfund | \`${process.env.CONTRACT_ID || 'N/A'}\` |`,
+              `| registry  | \`${process.env.REGISTRY_ID || 'N/A'}\` |`,
+            ].join('\n');
+
+            await github.rest.repos.createCommitComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              commit_sha: context.sha,
+              body,
+            });
+
+      - name: Notify Slack on failure
+        if: needs.deploy.result == 'failure' && env.SLACK_WEBHOOK_URL != ''
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          VERSION: ${{ github.event.inputs.version_tag }}
+        run: |
+          curl -s -X POST "$SLACK_WEBHOOK_URL" \
+            -H 'Content-Type: application/json' \
+            -d "{\"text\":\"❌ Mainnet deployment *$VERSION* failed. See: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}\"}"

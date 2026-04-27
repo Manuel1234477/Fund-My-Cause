@@ -10,22 +10,99 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # needed for base-branch comparison
+
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: wasm32-unknown-unknown
+
       - name: Build contracts
         run: cargo build --release --target wasm32-unknown-unknown
-      - name: Check contract WASM size
+
+      # ── Contract size check ────────────────────────────────────────────────
+      - name: Check contract WASM sizes
+        id: size_check
         run: |
-          WASM=target/wasm32-unknown-unknown/release/crowdfund.wasm
-          SIZE=$(wc -c < "$WASM")
-          echo "Contract size: ${SIZE} bytes"
           MAX=65536
-          if [ "$SIZE" -gt "$MAX" ]; then
-            echo "ERROR: Contract size ${SIZE} bytes exceeds the 64 KB Soroban limit (${MAX} bytes)."
+          FAILED=0
+          REPORT=""
+
+          for wasm in target/wasm32-unknown-unknown/release/*.wasm; do
+            name=$(basename "$wasm")
+            size=$(wc -c < "$wasm")
+            pct=$(( size * 100 / MAX ))
+            REPORT="${REPORT}\n| \`${name}\` | ${size} | ${MAX} | ${pct}% |"
+            echo "${name}: ${size} bytes (${pct}% of limit)"
+            if [ "$size" -gt "$MAX" ]; then
+              echo "ERROR: ${name} (${size} bytes) exceeds the 64 KB Soroban limit."
+              FAILED=1
+            fi
+          done
+
+          # Write to step summary
+          {
+            echo "## Contract Size Report"
+            echo ""
+            echo "| Contract | Size (bytes) | Limit (bytes) | Usage |"
+            echo "|---|---|---|---|"
+            printf "%b\n" "$REPORT"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if [ "$FAILED" -eq 1 ]; then
             exit 1
           fi
-          echo "OK: Contract size is within the 64 KB limit."
+
+      # ── Size comparison vs base branch (PRs only) ─────────────────────────
+      - name: Compare size with base branch
+        if: github.event_name == 'pull_request'
+        run: |
+          BASE_REF="${{ github.base_ref }}"
+          echo "Comparing against base branch: $BASE_REF"
+
+          # Save current sizes
+          declare -A CURRENT
+          for wasm in target/wasm32-unknown-unknown/release/*.wasm; do
+            name=$(basename "$wasm")
+            CURRENT[$name]=$(wc -c < "$wasm")
+          done
+
+          # Build base branch
+          git stash --include-untracked 2>/dev/null || true
+          git checkout "origin/$BASE_REF" -- . 2>/dev/null || {
+            echo "Could not checkout base branch; skipping comparison."
+            exit 0
+          }
+          cargo build --release --target wasm32-unknown-unknown 2>/dev/null
+
+          # Compare
+          {
+            echo ""
+            echo "## Size Comparison vs \`$BASE_REF\`"
+            echo ""
+            echo "| Contract | Base (bytes) | PR (bytes) | Delta |"
+            echo "|---|---|---|---|"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          for wasm in target/wasm32-unknown-unknown/release/*.wasm; do
+            name=$(basename "$wasm")
+            base_size=$(wc -c < "$wasm")
+            pr_size=${CURRENT[$name]:-0}
+            delta=$(( pr_size - base_size ))
+            if [ "$delta" -gt 0 ]; then
+              symbol="⬆️ +${delta}"
+            elif [ "$delta" -lt 0 ]; then
+              symbol="⬇️ ${delta}"
+            else
+              symbol="➡️ 0"
+            fi
+            echo "| \`${name}\` | ${base_size} | ${pr_size} | ${symbol} |" >> "$GITHUB_STEP_SUMMARY"
+            echo "${name}: base=${base_size} pr=${pr_size} delta=${delta}"
+          done
+
+          # Restore PR state
+          git checkout HEAD -- . 2>/dev/null || true
+
       - name: Run tests
         run: cargo test --workspace

@@ -1,0 +1,58 @@
+name: Dependency Updates
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  # ── Security audit ───────────────────────────────────────────────────────────
+  security-audit:
+    name: Security audit
+    runs-on: ubuntu-latest
+    if: contains(github.event.pull_request.labels.*.name, 'dependencies')
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: npm audit (frontend)
+        working-directory: apps/interface
+        run: |
+          npm ci --ignore-scripts
+          npm audit --audit-level=high
+
+      - name: cargo audit (contracts)
+        run: |
+          cargo install --locked cargo-audit
+          cargo audit
+
+  # ── Auto-merge patch updates from Dependabot ────────────────────────────────
+  auto-merge:
+    name: Auto-merge patch updates
+    runs-on: ubuntu-latest
+    needs: security-audit
+    if: |
+      github.actor == 'dependabot[bot]' &&
+      contains(github.event.pull_request.labels.*.name, 'dependencies')
+    steps:
+      - name: Fetch Dependabot metadata
+        id: meta
+        uses: dependabot/fetch-metadata@v2
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Auto-merge patch updates
+        if: steps.meta.outputs.update-type == 'version-update:semver-patch'
+        run: gh pr merge --auto --squash "$PR_URL"
+        env:
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Label minor/major updates for review
+        if: steps.meta.outputs.update-type != 'version-update:semver-patch'
+        run: gh pr edit "$PR_URL" --add-label "needs-review"
+        env:
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
