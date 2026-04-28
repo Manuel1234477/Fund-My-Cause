@@ -290,3 +290,314 @@ pub struct InsuranceConfig {
     /// Whether insurance is enabled for this campaign
     pub enabled: bool,
 }
+
+// ── Missing types referenced in lib.rs ───────────────────────────────────────
+
+/// Vesting schedule for campaign withdrawal.
+///
+/// Defines a cliff-and-duration vesting schedule for creator payouts.
+#[derive(Clone)]
+#[contracttype]
+pub struct VestingSchedule {
+    /// Cliff timestamp — no withdrawal before this point (Unix seconds)
+    pub cliff: u64,
+    /// Duration in seconds over which funds vest linearly after the cliff
+    pub duration: u64,
+}
+
+/// Records a single goal adjustment for audit history.
+#[derive(Clone)]
+#[contracttype]
+pub struct GoalAdjustment {
+    /// Goal value before the adjustment
+    pub previous_goal: i128,
+    /// Goal value after the adjustment
+    pub new_goal: i128,
+    /// Ledger timestamp when the adjustment occurred
+    pub timestamp: u64,
+}
+
+// ── Structured event payloads ─────────────────────────────────────────────────
+//
+// Each event emitted by the contract carries one of these structs as its data
+// payload.  Using typed structs instead of raw tuples makes events indexable,
+// self-documenting, and forward-compatible.
+
+/// Emitted when a campaign is successfully initialized.
+///
+/// Event topic: `("campaign", "initialized")`
+#[derive(Clone)]
+#[contracttype]
+pub struct EventInitialized {
+    pub creator: Address,
+    pub goal: i128,
+    pub deadline: u64,
+}
+
+/// Emitted when a contribution is accepted.
+///
+/// Event topic: `("campaign", "contributed")`
+#[derive(Clone)]
+#[contracttype]
+pub struct EventContributed {
+    pub contributor: Address,
+    pub amount: i128,
+    /// New running total for this contributor after this contribution
+    pub new_total: i128,
+    /// Matched amount added by a sponsor (0 if no matching configured)
+    pub matched_amount: i128,
+}
+
+/// Emitted when the creator withdraws funds after a successful campaign.
+///
+/// Event topic: `("campaign", "withdrawn")`
+#[derive(Clone)]
+#[contracttype]
+pub struct EventWithdrawn {
+    pub creator: Address,
+    /// Total raised at the time of withdrawal (before fee deduction)
+    pub total: i128,
+    /// Platform fee deducted (0 if no platform config)
+    pub fee: i128,
+    /// Net amount transferred to the creator
+    pub payout: i128,
+}
+
+/// Emitted when a contributor claims a full refund.
+///
+/// Event topic: `("campaign", "refunded")`
+#[derive(Clone)]
+#[contracttype]
+pub struct EventRefunded {
+    pub contributor: Address,
+    pub amount: i128,
+}
+
+/// Emitted when a contributor claims a partial refund before the deadline.
+///
+/// Event topic: `("campaign", "partial_refund")`
+#[derive(Clone)]
+#[contracttype]
+pub struct EventPartialRefund {
+    pub contributor: Address,
+    pub amount: i128,
+    /// Remaining contribution balance after the partial refund
+    pub remaining: i128,
+}
+
+/// Emitted when the campaign status changes.
+///
+/// Event topic: `("campaign", "status_changed")`
+#[derive(Clone)]
+#[contracttype]
+pub struct EventStatusChanged {
+    pub old_status: Status,
+    pub new_status: Status,
+}
+
+/// Emitted when campaign metadata is updated.
+///
+/// Event topic: `("campaign", "metadata_updated")`
+#[derive(Clone)]
+#[contracttype]
+pub struct EventMetadataUpdated {
+    pub updated_title: bool,
+    pub updated_description: bool,
+    pub updated_social_links: bool,
+}
+
+/// Emitted when the campaign deadline is extended directly by the creator.
+///
+/// Event topic: `("campaign", "deadline_extended")`
+#[derive(Clone)]
+#[contracttype]
+pub struct EventDeadlineExtended {
+    pub old_deadline: u64,
+    pub new_deadline: u64,
+}
+
+/// Emitted when a deadline extension proposal is created.
+///
+/// Event topic: `("campaign", "extension_proposed")`
+#[derive(Clone)]
+#[contracttype]
+pub struct EventExtensionProposed {
+    pub new_deadline: u64,
+    pub voting_ends_at: u64,
+}
+
+/// Emitted when a contributor votes on a deadline extension.
+///
+/// Event topic: `("campaign", "extension_voted")`
+#[derive(Clone)]
+#[contracttype]
+pub struct EventExtensionVoted {
+    pub contributor: Address,
+    pub approve: bool,
+    pub vote_weight: i128,
+}
+
+/// Emitted when a deadline extension is executed after successful voting.
+///
+/// Event topic: `("campaign", "extension_executed")`
+#[derive(Clone)]
+#[contracttype]
+pub struct EventExtensionExecuted {
+    pub new_deadline: u64,
+    pub votes_for: i128,
+    pub votes_against: i128,
+}
+
+/// Emitted when a recurring contribution plan is set up.
+///
+/// Event topic: `("campaign", "recurring_setup")`
+#[derive(Clone)]
+#[contracttype]
+pub struct EventRecurringSetup {
+    pub contributor: Address,
+    pub amount: i128,
+    pub interval: u64,
+    pub end_date: u64,
+}
+
+/// Emitted when a recurring contribution is executed.
+///
+/// Event topic: `("campaign", "recurring_executed")`
+#[derive(Clone)]
+#[contracttype]
+pub struct EventRecurringExecuted {
+    pub contributor: Address,
+    pub amount: i128,
+}
+
+/// Emitted when a recurring plan is cancelled.
+///
+/// Event topic: `("campaign", "recurring_cancelled")`
+#[derive(Clone)]
+#[contracttype]
+pub struct EventRecurringCancelled {
+    pub contributor: Address,
+}
+
+/// Emitted when a delegation is created.
+///
+/// Event topic: `("campaign", "delegation_created")`
+#[derive(Clone)]
+#[contracttype]
+pub struct EventDelegationCreated {
+    pub delegator: Address,
+    pub delegate: Address,
+    pub amount: i128,
+}
+
+/// Emitted when a delegated contribution is made.
+///
+/// Event topic: `("campaign", "delegated_contribution")`
+#[derive(Clone)]
+#[contracttype]
+pub struct EventDelegatedContribution {
+    pub delegator: Address,
+    pub delegate: Address,
+    pub amount: i128,
+}
+
+/// Emitted when a delegation is revoked.
+///
+/// Event topic: `("campaign", "delegation_revoked")`
+#[derive(Clone)]
+#[contracttype]
+pub struct EventDelegationRevoked {
+    pub delegator: Address,
+}
+
+/// Emitted when an address is added to the whitelist.
+///
+/// Event topic: `("campaign", "whitelisted")`
+#[derive(Clone)]
+#[contracttype]
+pub struct EventWhitelisted {
+    pub address: Address,
+}
+
+/// Emitted when an address is removed from the whitelist.
+///
+/// Event topic: `("campaign", "whitelist_removed")`
+#[derive(Clone)]
+#[contracttype]
+pub struct EventWhitelistRemoved {
+    pub address: Address,
+}
+
+/// Emitted when an address is added to the blacklist.
+///
+/// Event topic: `("campaign", "blacklisted")`
+#[derive(Clone)]
+#[contracttype]
+pub struct EventBlacklisted {
+    pub address: Address,
+}
+
+/// Emitted when an address is removed from the blacklist.
+///
+/// Event topic: `("campaign", "blacklist_removed")`
+#[derive(Clone)]
+#[contracttype]
+pub struct EventBlacklistRemoved {
+    pub address: Address,
+}
+
+/// Emitted when whitelist-only mode is toggled.
+///
+/// Event topic: `("campaign", "whitelist_only_set")`
+#[derive(Clone)]
+#[contracttype]
+pub struct EventWhitelistOnlySet {
+    pub enabled: bool,
+}
+
+/// Emitted when the rate limit is updated.
+///
+/// Event topic: `("campaign", "rate_limit_updated")`
+#[derive(Clone)]
+#[contracttype]
+pub struct EventRateLimitUpdated {
+    pub max_amount_per_hour: i128,
+}
+
+/// Emitted when an emergency withdrawal is initiated.
+///
+/// Event topic: `("campaign", "emergency_initiated")`
+#[derive(Clone)]
+#[contracttype]
+pub struct EventEmergencyInitiated {
+    pub lock_until: u64,
+}
+
+/// Emitted when an emergency withdrawal is executed.
+///
+/// Event topic: `("campaign", "emergency_executed")`
+#[derive(Clone)]
+#[contracttype]
+pub struct EventEmergencyExecuted {
+    pub amount: i128,
+}
+
+/// Emitted when insurance is enabled for the campaign.
+///
+/// Event topic: `("insurance", "enabled")`
+#[derive(Clone)]
+#[contracttype]
+pub struct EventInsuranceEnabled {
+    pub fee_bps: u32,
+    pub provider: Address,
+}
+
+/// Emitted when an insurance payout is processed.
+///
+/// Event topic: `("insurance", "payout")`
+#[derive(Clone)]
+#[contracttype]
+pub struct EventInsurancePayout {
+    pub contributor: Address,
+    pub amount: i128,
+}
