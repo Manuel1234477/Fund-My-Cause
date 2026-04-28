@@ -1,8 +1,8 @@
 // Native ESLint 9 flat config.
 // eslint-config-next v14 is incompatible with ESLint 9 (uses deprecated
 // context.getAncestors / getScope APIs and @rushstack/eslint-patch).
-// We replicate the essential next/core-web-vitals rules directly using
-// ESLint-9-compatible plugin versions from the workspace root.
+// We replicate the essential rules using ESLint-9-compatible plugin versions
+// already present in the workspace root.
 
 import tseslint from "../../node_modules/@typescript-eslint/eslint-plugin/dist/index.js";
 import tsParser from "../../node_modules/@typescript-eslint/parser/dist/index.js";
@@ -28,15 +28,10 @@ const eslintConfig = [
       "react-hooks": reactHooks,
     },
     rules: {
-      // TypeScript essentials
       "@typescript-eslint/no-unused-vars": ["warn", { argsIgnorePattern: "^_" }],
       "@typescript-eslint/no-explicit-any": "warn",
-
-      // React hooks
       "react-hooks/rules-of-hooks": "error",
       "react-hooks/exhaustive-deps": "warn",
-
-      // General
       "no-console": ["warn", { allow: ["warn", "error"] }],
     },
   },
