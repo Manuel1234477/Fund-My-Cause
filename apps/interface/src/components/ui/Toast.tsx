@@ -1,6 +1,12 @@
 "use client";
 
-import React, { createContext, useContext, useState, useCallback, ReactNode } from "react";
+import React, {
+  createContext,
+  useContext,
+  useState,
+  useCallback,
+  ReactNode,
+} from "react";
 import { X, CheckCircle, AlertCircle, Info } from "lucide-react";
 
 export type ToastType = "success" | "error" | "info";
@@ -23,17 +29,20 @@ const ToastContext = createContext<ToastContextType | null>(null);
 export function ToastProvider({ children }: { children: ReactNode }) {
   const [toasts, setToasts] = useState<Toast[]>([]);
 
-  const addToast = useCallback((message: string, type: ToastType, txHash?: string) => {
-    const id = Math.random().toString(36).substring(2, 9);
-    setToasts((prev) => [...prev, { id, message, type, txHash }]);
+  const addToast = useCallback(
+    (message: string, type: ToastType, txHash?: string) => {
+      const id = Math.random().toString(36).substring(2, 9);
+      setToasts((prev) => [...prev, { id, message, type, txHash }]);
 
-    // Auto-dismiss success/info after 5 seconds
-    if (type !== "error") {
-      setTimeout(() => {
-        setToasts((prev) => prev.filter((t) => t.id !== id));
-      }, 5000);
-    }
-  }, []);
+      // Auto-dismiss success/info after 5 seconds
+      if (type !== "error") {
+        setTimeout(() => {
+          setToasts((prev) => prev.filter((t) => t.id !== id));
+        }, 5000);
+      }
+    },
+    [],
+  );
 
   const removeToast = useCallback((id: string) => {
     setToasts((prev) => prev.filter((t) => t.id !== id));
@@ -53,7 +62,13 @@ export function useToast() {
   return ctx;
 }
 
-function ToastContainer({ toasts, removeToast }: { toasts: Toast[]; removeToast: (id: string) => void }) {
+function ToastContainer({
+  toasts,
+  removeToast,
+}: {
+  toasts: Toast[];
+  removeToast: (id: string) => void;
+}) {
   if (toasts.length === 0) return null;
 
   return (
@@ -64,7 +79,11 @@ function ToastContainer({ toasts, removeToast }: { toasts: Toast[]; removeToast:
       aria-label="Notifications"
     >
       {toasts.map((toast) => (
-        <ToastItem key={toast.id} toast={toast} onClose={() => removeToast(toast.id)} />
+        <ToastItem
+          key={toast.id}
+          toast={toast}
+          onClose={() => removeToast(toast.id)}
+        />
       ))}
     </div>
   );
@@ -85,24 +104,30 @@ function ToastItem({ toast, onClose }: { toast: Toast; onClose: () => void }) {
 
   return (
     <div
-      className={`flex items-start gap-3 p-4 bg-gray-900 rounded-lg border ${borders[toast.type]} shadow-lg min-w-[300px] max-w-md animate-in slide-in-from-right`}
+      className={`flex items-start gap-3 p-4 bg-[var(--color-surface)] rounded-lg border ${borders[toast.type]} shadow-lg min-w-[300px] max-w-md animate-in slide-in-from-right`}
     >
       {icons[toast.type]}
       <div className="flex-1">
-        <p className="text-sm text-white">{toast.message}</p>
+        <p className="text-sm text-[var(--color-text-primary)]">
+          {toast.message}
+        </p>
         {toast.txHash && (
           <a
             href={`https://stellar.expert/explorer/testnet/tx/${toast.txHash}`}
             target="_blank"
             rel="noopener noreferrer"
             aria-label="View transaction on Stellar Expert (opens in new tab)"
-            className="text-xs text-indigo-400 hover:underline mt-1 inline-block"
+            className="text-xs text-[var(--color-brand)] hover:underline mt-1 inline-block"
           >
             View on Stellar Expert →
           </a>
         )}
       </div>
-      <button onClick={onClose} aria-label="Dismiss notification" className="text-gray-400 hover:text-white">
+      <button
+        onClick={onClose}
+        aria-label="Dismiss notification"
+        className="text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)]"
+      >
         <X size={16} />
       </button>
     </div>

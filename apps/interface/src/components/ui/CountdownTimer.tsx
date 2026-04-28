@@ -14,21 +14,21 @@ export function CountdownTimer({ deadline }: CountdownTimerProps) {
   useEffect(() => {
     const update = () => {
       const diff = new Date(deadline).getTime() - Date.now();
-      
+
       if (diff <= 0) {
         setTimeLeft("Campaign Ended");
         setIsUrgent(false);
         return;
       }
-      
+
       // Check if less than 24 hours remaining (for red color)
       setIsUrgent(diff < 24 * 60 * 60 * 1000);
-      
+
       const d = Math.floor(diff / 86400000);
       const h = Math.floor((diff % 86400000) / 3600000);
       const m = Math.floor((diff % 3600000) / 60000);
       const s = Math.floor((diff % 60000) / 1000);
-      
+
       // More than 1 hour: show days, hours, minutes
       if (diff > 3600000) {
         setTimeLeft(`${d}d ${h}h ${m}m left`);
@@ -37,14 +37,14 @@ export function CountdownTimer({ deadline }: CountdownTimerProps) {
         setTimeLeft(`${h}h ${m}m ${s}s left`);
       }
     };
-    
+
     update();
-    
+
     // Update every second when under 1 hour, otherwise every minute
     const diff = new Date(deadline).getTime() - Date.now();
     const interval = diff <= 3600000 ? 1000 : 60000;
     const id = setInterval(update, interval);
-    
+
     return () => clearInterval(id);
   }, [deadline]);
 
@@ -54,7 +54,9 @@ export function CountdownTimer({ deadline }: CountdownTimerProps) {
       aria-atomic="true"
       className={cn(
         "text-xs",
-        isUrgent ? "text-red-400" : "text-gray-500"
+        isUrgent
+          ? "text-[var(--color-danger-subtle)]"
+          : "text-[var(--color-text-muted)]",
       )}
     >
       {timeLeft}

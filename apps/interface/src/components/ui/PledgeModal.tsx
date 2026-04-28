@@ -1,7 +1,6 @@
 "use client";
 
-import React, { useState, useRef, useEffect  } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import React, { useState, useRef, useEffect } from "react";
 import { X } from "lucide-react";
 import { useWallet } from "@/context/WalletContext";
 import { TransactionStatus, TxStatus } from "@/components/ui/TransactionStatus";
@@ -36,7 +35,8 @@ export function PledgeModal({
   onRollbackOptimistic,
 }: PledgeModalProps) {
   const { address, connect, signTx, isSigning } = useWallet();
-  const { exists: accountExists, loading: accountLoading } = useAccountExists(address);
+  const { exists: accountExists, loading: accountLoading } =
+    useAccountExists(address);
   const { addToast } = useToast();
   const [amount, setAmount] = useState("");
   const [txStatus, setTxStatus] = useState<TxStatus>("idle");
@@ -59,12 +59,21 @@ export function PledgeModal({
     first?.focus();
 
     function handleKeyDown(e: KeyboardEvent) {
-      if (e.key === "Escape") { onClose(); return; }
+      if (e.key === "Escape") {
+        onClose();
+        return;
+      }
       if (e.key !== "Tab") return;
       if (e.shiftKey) {
-        if (document.activeElement === first) { e.preventDefault(); last?.focus(); }
+        if (document.activeElement === first) {
+          e.preventDefault();
+          last?.focus();
+        }
       } else {
-        if (document.activeElement === last) { e.preventDefault(); first?.focus(); }
+        if (document.activeElement === last) {
+          e.preventDefault();
+          first?.focus();
+        }
       }
     }
     el.addEventListener("keydown", handleKeyDown);
@@ -74,7 +83,10 @@ export function PledgeModal({
   const minXlm = Number(minContribution) / 1e7;
 
   const handlePledge = async () => {
-    if (!address) { await connect(); return; }
+    if (!address) {
+      await connect();
+      return;
+    }
     if (pendingTx) return;
 
     const xlm = parseFloat(amount);
@@ -95,12 +107,17 @@ export function PledgeModal({
     onOptimisticContribute?.(xlm);
 
     try {
-      const hash = await contribute(contractId, address, stroops, async (xdr) => {
-        setTxStatus("signing");
-        const signed = await signTx(xdr);
-        setTxStatus("submitting");
-        return signed;
-      });
+      const hash = await contribute(
+        contractId,
+        address,
+        stroops,
+        async (xdr) => {
+          setTxStatus("signing");
+          const signed = await signTx(xdr);
+          setTxStatus("submitting");
+          return signed;
+        },
+      );
 
       setTxStatus("confirming");
       setTxHash(hash);
@@ -133,20 +150,23 @@ export function PledgeModal({
 
   return (
     // Backdrop: closes modal on click. Keyboard dismissal (Escape) is handled by the focus trap inside the dialog.
-    // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions
     <div
       className="fixed inset-0 bg-black/60 flex items-center justify-center z-50"
       aria-modal="true"
-      onClick={(e) => { if (e.target === e.currentTarget && !isProcessing) onClose(); }}
+      onClick={(e) => {
+        if (e.target === e.currentTarget && !isProcessing) onClose();
+      }}
     >
       <div
         ref={dialogRef}
         role="dialog"
         aria-labelledby={titleId}
-        className="bg-gray-900 rounded-2xl p-6 w-full max-w-md border border-gray-700 space-y-4"
+        className="ds-card p-6 w-full max-w-md space-y-4"
       >
         <div className="flex justify-between items-center">
-          <h2 id={titleId} className="text-lg font-semibold">Pledge to {campaignTitle}</h2>
+          <h2 id={titleId} className="text-lg font-semibold">
+            Pledge to {campaignTitle}
+          </h2>
           <button
             onClick={onClose}
             aria-label="Close pledge modal"
@@ -168,7 +188,8 @@ export function PledgeModal({
             <div className="space-y-1">
               {address && !accountLoading && !accountExists && (
                 <p className="text-xs text-yellow-400" role="alert">
-                  ⚠️ This account is not funded on the network. Your transaction will fail.
+                  ⚠️ This account is not funded on the network. Your transaction
+                  will fail.
                 </p>
               )}
               <label htmlFor="pledge-amount" className="sr-only">
@@ -181,10 +202,12 @@ export function PledgeModal({
                 value={amount}
                 min={minXlm}
                 step="0.1"
-                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setAmount(e.target.value)}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                  setAmount(e.target.value)
+                }
                 disabled={isProcessing}
                 aria-label={`Amount in XLM, minimum ${minXlm}`}
-                className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-2 text-white placeholder-gray-500 focus:outline-none disabled:opacity-50"
+                className="ds-input w-full px-4 py-2 disabled:opacity-50"
               />
               {minContribution > XLM_TO_STROOPS && (
                 <p className="text-xs text-gray-500">Minimum: {minXlm} XLM</p>
@@ -193,8 +216,12 @@ export function PledgeModal({
             <button
               onClick={handlePledgeWithDebounce}
               disabled={isProcessing}
-              aria-label={address ? `Confirm pledge to ${campaignTitle}` : "Connect wallet to pledge"}
-              className="w-full bg-indigo-600 hover:bg-indigo-500 py-2 rounded-xl font-medium transition disabled:opacity-50"
+              aria-label={
+                address
+                  ? `Confirm pledge to ${campaignTitle}`
+                  : "Connect wallet to pledge"
+              }
+              className="ds-btn-primary w-full py-2"
             >
               {address ? "Confirm Pledge" : "Connect Wallet to Pledge"}
             </button>

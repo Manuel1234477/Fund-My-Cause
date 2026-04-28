@@ -21,24 +21,28 @@ export function ProgressBar({ progress, animated = false }: ProgressBarProps) {
           aria-valuemin={0}
           aria-valuemax={100}
           aria-label={`Funding progress: ${Math.round(clamped)}%`}
-          className="w-full bg-gray-800 rounded-full h-2 relative overflow-hidden"
+          className="w-full bg-[var(--color-surface-elevated)] rounded-full h-2 relative overflow-hidden"
         >
           <div
             className={cn(
               "h-2 rounded-full transition-all duration-500",
-              isFunded ? "bg-green-500" : "bg-indigo-500",
-              animated && "animate-shimmer"
+              animated && "animate-shimmer",
             )}
-            style={{ width: `${clamped}%` }}
+            style={{
+              width: `${clamped}%`,
+              background: isFunded
+                ? "var(--color-success)"
+                : "var(--color-brand)",
+            }}
           />
-          <div className="absolute right-0 top-0 h-full w-0.5 bg-gray-600 opacity-50" />
+          <div className="absolute right-0 top-0 h-full w-0.5 bg-[var(--color-border-subtle)] opacity-50" />
         </div>
       </div>
       <span
-        className={cn(
-          "text-sm font-medium min-w-[3rem] text-right",
-          isFunded ? "text-green-400" : "text-indigo-400"
-        )}
+        className="text-sm font-medium min-w-[3rem] text-right"
+        style={{
+          color: isFunded ? "var(--color-success)" : "var(--color-brand)",
+        }}
         aria-hidden="true"
       >
         {Math.round(clamped)}%
