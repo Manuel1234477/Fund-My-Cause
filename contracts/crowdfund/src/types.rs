@@ -772,3 +772,104 @@ pub struct EventCategoryUpdated {
     /// New category after the update
     pub new_category: Category,
 }
+
+/// Emitted when the campaign is paused.
+///
+/// Event topic: `("campaign", "paused")`
+#[derive(Clone)]
+#[contracttype]
+pub struct EventPaused {
+    pub timestamp: u64,
+}
+
+/// Emitted when the campaign is resumed.
+///
+/// Event topic: `("campaign", "resumed")`
+#[derive(Clone)]
+#[contracttype]
+pub struct EventResumed {
+    pub timestamp: u64,
+}
+
+/// Emitted when a campaign is cancelled.
+///
+/// Event topic: `("campaign", "cancelled")`
+#[derive(Clone)]
+#[contracttype]
+pub struct EventCancelled {
+    pub creator: Address,
+    pub total_raised: i128,
+}
+
+/// Emitted after a batch refund completes.
+///
+/// Event topic: `("campaign", "batch_refund_completed")`
+#[derive(Clone)]
+#[contracttype]
+pub struct EventBatchRefundCompleted {
+    pub total_refunded: u32,
+    pub batch_size: u32,
+}
+
+/// Emitted when a contributor is assigned a reward tier.
+///
+/// Event topic: `("campaign", "tier_assigned")`
+#[derive(Clone)]
+#[contracttype]
+pub struct EventTierAssigned {
+    pub contributor: Address,
+    pub tier_name: String,
+    pub min_amount: i128,
+}
+
+/// Emitted when reward tiers are configured.
+///
+/// Event topic: `("campaign", "tiers_set")`
+#[derive(Clone)]
+#[contracttype]
+pub struct EventTiersSet {
+    pub tier_count: u32,
+}
+
+/// Emitted when a metadata version snapshot is stored.
+///
+/// Event topic: `("campaign", "metadata_versioned")`
+#[derive(Clone)]
+#[contracttype]
+pub struct EventMetadataVersioned {
+    pub version: u32,
+    pub timestamp: u64,
+}
+
+/// A versioned snapshot of campaign metadata.
+#[derive(Clone)]
+#[contracttype]
+pub struct MetadataVersion {
+    pub version: u32,
+    pub title: String,
+    pub description: String,
+    pub timestamp: u64,
+}
+
+/// Emitted when the campaign goal is adjusted.
+///
+/// Event topic: `("campaign", "goal_adjusted")`
+#[derive(Clone)]
+#[contracttype]
+pub struct EventGoalAdjusted {
+    pub previous_goal: i128,
+    pub new_goal: i128,
+    pub timestamp: u64,
+}
+
+/// Emitted when a contribution is recorded with full detail.
+///
+/// Event topic: `("campaign", "contribution_recorded")`
+#[derive(Clone)]
+#[contracttype]
+pub struct EventContributionRecorded {
+    pub contributor: Address,
+    pub amount: i128,
+    pub timestamp: u64,
+    pub running_total: i128,
+}

@@ -968,3 +968,471 @@ fn cancel_recurring_removes_plan() {
     let r = client.try_execute_recurring(&contributor);
     assert_eq!(r.err(), Some(Ok(ContractError::InvalidRecurringPlan)));
 }
+
+// ── #432: Vesting schedule tests ──────────────────────────────────────────────
+
+fn setup_contract_with_vesting(
+    env: &Env,
+    deadline: u64,
+    goal: i128,
+    cliff: u64,
+    duration: u64,
+) -> (
+    Address,
+    Address,
+    CrowdfundContractClient<'_>,
+    token::StellarAssetClient<'_>,
+) {
+    env.mock_all_auths();
+
+    let creator = Address::generate(env);
+    let token_admin = Address::generate(env);
+    let token_id = env.register_stellar_asset_contract(token_admin.clone());
+    let token_admin_client = token::StellarAssetClient::new(env, &token_id);
+
+    let contract_id = env.register_contract(None, CrowdfundContract);
+    let client = CrowdfundContractClient::new(env, &contract_id);
+
+    client.initialize(
+        &creator,
+        &token_id,
+        &goal,
+        &deadline,
+        &0i128,
+        &0i128,
+        &String::from_str(env, "Vesting Campaign"),
+        &String::from_str(env, "Test vesting"),
+        &None,
+        &None,
+        &None,
+        &Category::Other,
+        &Some(VestingSchedule { cliff, duration }),
+        &None,
+    );
+
+    (creator, token_id, client, token_admin_client)
+}
+
+#[test]
+fn get_vesting_info_returns_configured_schedule() {
+    let env = Env::default();
+    let cliff = 2_000u64;
+    let duration = 1_000u64;
+    let (_creator, _token_id, client, _) =
+        setup_contract_with_vesting(&env, 1_000, 1_000, cliff, duration);
+
+    let v = client.get_vesting_info().expect("vesting configured");
+    assert_eq!(v.cliff, cliff);
+    assert_eq!(v.duration, duration);
+}
+
+#[test]
+fn get_vested_amount_returns_zero_before_cliff() {
+    let env = Env::default();
+    // cliff=2000, deadline=1000 — cliff is after deadline so we can test pre-cliff
+    let (_creator, token_id, client, token_admin_client) =
+        setup_contract_with_vesting(&env, 1_000, 500, 2_000, 1_000);
+
+    let contributor = Address::generate(&env);
+    token_admin_client.mint(&contributor, &500);
+    client.contribute(&contributor, &500, &token_id, &None);
+
+    // Before cliff
+    env.ledger().set_timestamp(1_500);
+    assert_eq!(client.get_vested_amount(), 0);
+}
+
+#[test]
+fn get_vested_amount_returns_full_after_cliff_plus_duration() {
+    let env = Env::default();
+    let (_creator, token_id, client, token_admin_client) =
+        setup_contract_with_vesting(&env, 1_000, 500, 2_000, 1_000);
+
+    let contributor = Address::generate(&env);
+    token_admin_client.mint(&contributor, &500);
+    client.contribute(&contributor, &500, &token_id, &None);
+
+    // After cliff + duration
+    env.ledger().set_timestamp(3_001);
+    assert_eq!(client.get_vested_amount(), 500);
+}
+
+#[test]
+fn get_vested_amount_linear_between_cliff_and_end() {
+    let env = Env::default();
+    let (_creator, token_id, client, token_admin_client) =
+        setup_contract_with_vesting(&env, 1_000, 1_000, 2_000, 1_000);
+
+    let contributor = Address::generate(&env);
+    token_admin_client.mint(&contributor, &1_000);
+    client.contribute(&contributor, &1_000, &token_id, &None);
+
+    // Halfway through vesting: cliff=2000, duration=1000, now=2500 → 50% vested
+    env.ledger().set_timestamp(2_500);
+    assert_eq!(client.get_vested_amount(), 500);
+}
+
+#[test]
+fn withdraw_before_cliff_is_rejected() {
+    let env = Env::default();
+    // deadline=1000, cliff=2000
+    let (creator, token_id, client, token_admin_client) =
+        setup_contract_with_vesting(&env, 1_000, 500, 2_000, 1_000);
+
+    let contributor = Address::generate(&env);
+    token_admin_client.mint(&contributor, &500);
+    client.contribute(&contributor, &500, &token_id, &None);
+
+    // Past deadline but before cliff
+    env.ledger().set_timestamp(1_500);
+    let result = client.try_withdraw();
+    assert_eq!(result.err(), Some(Ok(ContractError::VestingNotComplete)));
+
+    // Verify creator received nothing
+    let token_client = token::Client::new(&env, &token_id);
+    assert_eq!(token_client.balance(&creator), 0);
+}
+
+#[test]
+fn withdraw_after_cliff_transfers_vested_amount() {
+    let env = Env::default();
+    // deadline=1000, cliff=2000, duration=1000
+    let (creator, token_id, client, token_admin_client) =
+        setup_contract_with_vesting(&env, 1_000, 1_000, 2_000, 1_000);
+
+    let contributor = Address::generate(&env);
+    token_admin_client.mint(&contributor, &1_000);
+    client.contribute(&contributor, &1_000, &token_id, &None);
+
+    // At cliff + 500 (halfway through duration) → 50% vested
+    env.ledger().set_timestamp(2_500);
+    client.withdraw();
+
+    let token_client = token::Client::new(&env, &token_id);
+    assert_eq!(token_client.balance(&creator), 500);
+}
+
+#[test]
+fn no_vesting_schedule_returns_full_payout_as_vested() {
+    let env = Env::default();
+    let (_creator, token_id, client, token_admin_client) =
+        setup_contract(&env, 1_000, 500, 0);
+
+    let contributor = Address::generate(&env);
+    token_admin_client.mint(&contributor, &500);
+    client.contribute(&contributor, &500, &token_id, &None);
+
+    assert_eq!(client.get_vested_amount(), 500);
+}
+
+// ── #433: Insurance pool tests ────────────────────────────────────────────────
+
+#[test]
+fn enable_insurance_stores_config() {
+    let env = Env::default();
+    let (_creator, _token_id, client, _) = setup_contract(&env, 10_000, 100_000, 0);
+
+    let provider = Address::generate(&env);
+    client.enable_insurance(&100, &provider);
+
+    let config = client.get_insurance_config().expect("insurance enabled");
+    assert_eq!(config.fee_bps, 100);
+    assert!(config.enabled);
+}
+
+#[test]
+fn enable_insurance_invalid_fee_is_rejected() {
+    let env = Env::default();
+    let (_creator, _token_id, client, _) = setup_contract(&env, 10_000, 100_000, 0);
+
+    let provider = Address::generate(&env);
+    let result = client.try_enable_insurance(&10_001, &provider);
+    assert_eq!(result.err(), Some(Ok(ContractError::InvalidFee)));
+}
+
+#[test]
+fn contribute_with_insurance_splits_fee_into_pool() {
+    let env = Env::default();
+    let (_creator, token_id, client, token_admin_client) =
+        setup_contract(&env, 10_000, 100_000, 0);
+
+    let provider = Address::generate(&env);
+    // 10% insurance fee
+    client.enable_insurance(&1_000, &provider);
+
+    let contributor = Address::generate(&env);
+    token_admin_client.mint(&contributor, &1_000);
+    client.contribute(&contributor, &1_000, &token_id, &None);
+
+    // 10% of 1000 = 100 goes to pool; 900 counts toward goal
+    assert_eq!(client.get_insurance_pool(), 100);
+    assert_eq!(client.get_insurance_fee(&contributor), 100);
+    assert_eq!(client.total_raised(), 900);
+    assert_eq!(client.contribution(&contributor), 900);
+}
+
+#[test]
+fn claim_insurance_payout_on_failed_campaign() {
+    let env = Env::default();
+    let (_creator, token_id, client, token_admin_client) =
+        setup_contract(&env, 1_000, 100_000, 0);
+
+    let provider = Address::generate(&env);
+    client.enable_insurance(&1_000, &provider); // 10%
+
+    let contributor = Address::generate(&env);
+    token_admin_client.mint(&contributor, &1_000);
+    client.contribute(&contributor, &1_000, &token_id, &None);
+
+    // Campaign fails (goal not reached, deadline passed)
+    env.ledger().set_timestamp(2_000);
+
+    let token_client = token::Client::new(&env, &token_id);
+    let balance_before = token_client.balance(&contributor);
+    client.claim_insurance_payout(&contributor);
+
+    assert_eq!(token_client.balance(&contributor), balance_before + 100);
+    assert_eq!(client.get_insurance_fee(&contributor), 0);
+    assert_eq!(client.get_insurance_pool(), 0);
+}
+
+#[test]
+fn claim_insurance_payout_on_active_campaign_is_rejected() {
+    let env = Env::default();
+    let (_creator, token_id, client, token_admin_client) =
+        setup_contract(&env, 10_000, 100_000, 0);
+
+    let provider = Address::generate(&env);
+    client.enable_insurance(&1_000, &provider);
+
+    let contributor = Address::generate(&env);
+    token_admin_client.mint(&contributor, &1_000);
+    client.contribute(&contributor, &1_000, &token_id, &None);
+
+    let result = client.try_claim_insurance_payout(&contributor);
+    assert_eq!(result.err(), Some(Ok(ContractError::CampaignStillActive)));
+}
+
+#[test]
+fn claim_insurance_payout_on_successful_campaign_is_rejected() {
+    let env = Env::default();
+    let (_creator, token_id, client, token_admin_client) =
+        setup_contract(&env, 1_000, 500, 0);
+
+    let provider = Address::generate(&env);
+    client.enable_insurance(&1_000, &provider);
+
+    let contributor = Address::generate(&env);
+    token_admin_client.mint(&contributor, &1_000);
+    client.contribute(&contributor, &1_000, &token_id, &None);
+
+    // Goal reached, deadline passed
+    env.ledger().set_timestamp(2_000);
+
+    let result = client.try_claim_insurance_payout(&contributor);
+    assert_eq!(result.err(), Some(Ok(ContractError::GoalReached)));
+}
+
+// ── #434: Deadline extension voting tests ─────────────────────────────────────
+
+#[test]
+fn propose_extension_stores_proposal() {
+    let env = Env::default();
+    let (_creator, _token_id, client, _) = setup_contract(&env, 1_000, 10_000, 0);
+
+    env.ledger().set_timestamp(100);
+    client.propose_extension(&2_000);
+
+    let proposal = client.get_extension_proposal().expect("proposal stored");
+    assert_eq!(proposal.new_deadline, 2_000);
+    assert!(!proposal.executed);
+    assert_eq!(proposal.votes_for, 0);
+    assert_eq!(proposal.votes_against, 0);
+}
+
+#[test]
+fn propose_extension_with_earlier_deadline_is_rejected() {
+    let env = Env::default();
+    let (_creator, _token_id, client, _) = setup_contract(&env, 1_000, 10_000, 0);
+
+    let result = client.try_propose_extension(&500);
+    assert_eq!(result.err(), Some(Ok(ContractError::InvalidDeadline)));
+}
+
+#[test]
+fn vote_on_extension_records_vote_weight() {
+    let env = Env::default();
+    let (_creator, token_id, client, token_admin_client) =
+        setup_contract(&env, 10_000, 100_000, 0);
+
+    let contributor = Address::generate(&env);
+    token_admin_client.mint(&contributor, &500);
+    client.contribute(&contributor, &500, &token_id, &None);
+
+    env.ledger().set_timestamp(100);
+    client.propose_extension(&20_000);
+
+    client.vote_on_extension(&contributor, &true);
+
+    let proposal = client.get_extension_proposal().unwrap();
+    assert_eq!(proposal.votes_for, 500);
+    assert_eq!(proposal.votes_against, 0);
+}
+
+#[test]
+fn vote_on_extension_against_records_correctly() {
+    let env = Env::default();
+    let (_creator, token_id, client, token_admin_client) =
+        setup_contract(&env, 10_000, 100_000, 0);
+
+    let contributor = Address::generate(&env);
+    token_admin_client.mint(&contributor, &300);
+    client.contribute(&contributor, &300, &token_id, &None);
+
+    env.ledger().set_timestamp(100);
+    client.propose_extension(&20_000);
+    client.vote_on_extension(&contributor, &false);
+
+    let proposal = client.get_extension_proposal().unwrap();
+    assert_eq!(proposal.votes_for, 0);
+    assert_eq!(proposal.votes_against, 300);
+}
+
+#[test]
+fn double_vote_is_rejected() {
+    let env = Env::default();
+    let (_creator, token_id, client, token_admin_client) =
+        setup_contract(&env, 10_000, 100_000, 0);
+
+    let contributor = Address::generate(&env);
+    token_admin_client.mint(&contributor, &500);
+    client.contribute(&contributor, &500, &token_id, &None);
+
+    env.ledger().set_timestamp(100);
+    client.propose_extension(&20_000);
+    client.vote_on_extension(&contributor, &true);
+
+    let result = client.try_vote_on_extension(&contributor, &true);
+    assert_eq!(result.err(), Some(Ok(ContractError::AlreadyVoted)));
+}
+
+#[test]
+fn vote_after_voting_period_is_rejected() {
+    let env = Env::default();
+    let (_creator, token_id, client, token_admin_client) =
+        setup_contract(&env, 1_000_000, 100_000, 0);
+
+    let contributor = Address::generate(&env);
+    token_admin_client.mint(&contributor, &500);
+    client.contribute(&contributor, &500, &token_id, &None);
+
+    env.ledger().set_timestamp(100);
+    client.propose_extension(&2_000_000);
+
+    // Advance past voting period (7 days = 604800 seconds)
+    env.ledger().set_timestamp(100 + 604_801);
+
+    let result = client.try_vote_on_extension(&contributor, &true);
+    assert_eq!(result.err(), Some(Ok(ContractError::VotingEnded)));
+}
+
+#[test]
+fn execute_extension_updates_deadline_when_majority_approves() {
+    let env = Env::default();
+    let (_creator, token_id, client, token_admin_client) =
+        setup_contract(&env, 1_000_000, 100_000, 0);
+
+    let c1 = Address::generate(&env);
+    let c2 = Address::generate(&env);
+    token_admin_client.mint(&c1, &700);
+    token_admin_client.mint(&c2, &300);
+    client.contribute(&c1, &700, &token_id, &None);
+    client.contribute(&c2, &300, &token_id, &None);
+
+    env.ledger().set_timestamp(100);
+    client.propose_extension(&2_000_000);
+
+    client.vote_on_extension(&c1, &true);  // 700 for
+    client.vote_on_extension(&c2, &false); // 300 against
+
+    // Advance past voting period
+    env.ledger().set_timestamp(100 + 604_801);
+    client.execute_extension();
+
+    assert_eq!(client.deadline(), 2_000_000);
+}
+
+#[test]
+fn execute_extension_does_not_update_deadline_when_majority_rejects() {
+    let env = Env::default();
+    let (_creator, token_id, client, token_admin_client) =
+        setup_contract(&env, 1_000_000, 100_000, 0);
+
+    let c1 = Address::generate(&env);
+    let c2 = Address::generate(&env);
+    token_admin_client.mint(&c1, &300);
+    token_admin_client.mint(&c2, &700);
+    client.contribute(&c1, &300, &token_id, &None);
+    client.contribute(&c2, &700, &token_id, &None);
+
+    env.ledger().set_timestamp(100);
+    client.propose_extension(&2_000_000);
+
+    client.vote_on_extension(&c1, &true);  // 300 for
+    client.vote_on_extension(&c2, &false); // 700 against
+
+    env.ledger().set_timestamp(100 + 604_801);
+    client.execute_extension();
+
+    // Deadline unchanged
+    assert_eq!(client.deadline(), 1_000_000);
+}
+
+// ── #435: Partial refund tests ────────────────────────────────────────────────
+
+#[test]
+fn refund_partial_within_limit_succeeds() {
+    let env = Env::default();
+    let (_creator, token_id, client, token_admin_client) =
+        setup_contract(&env, 10_000, 100_000, 0);
+
+    let contributor = Address::generate(&env);
+    token_admin_client.mint(&contributor, &1_000);
+    client.contribute(&contributor, &1_000, &token_id, &None);
+
+    let token_client = token::Client::new(&env, &token_id);
+    client.refund_partial(&contributor, &500); // exactly 50%
+
+    assert_eq!(client.contribution(&contributor), 500);
+    assert_eq!(token_client.balance(&contributor), 500);
+    assert_eq!(client.total_raised(), 500);
+}
+
+#[test]
+fn refund_partial_exceeding_50_percent_is_rejected() {
+    let env = Env::default();
+    let (_creator, token_id, client, token_admin_client) =
+        setup_contract(&env, 10_000, 100_000, 0);
+
+    let contributor = Address::generate(&env);
+    token_admin_client.mint(&contributor, &1_000);
+    client.contribute(&contributor, &1_000, &token_id, &None);
+
+    let result = client.try_refund_partial(&contributor, &501);
+    assert_eq!(result.err(), Some(Ok(ContractError::RefundLimitExceeded)));
+}
+
+#[test]
+fn refund_partial_updates_total_raised() {
+    let env = Env::default();
+    let (_creator, token_id, client, token_admin_client) =
+        setup_contract(&env, 10_000, 100_000, 0);
+
+    let contributor = Address::generate(&env);
+    token_admin_client.mint(&contributor, &800);
+    client.contribute(&contributor, &800, &token_id, &None);
+
+    assert_eq!(client.total_raised(), 800);
+    client.refund_partial(&contributor, &400);
+    assert_eq!(client.total_raised(), 400);
+}

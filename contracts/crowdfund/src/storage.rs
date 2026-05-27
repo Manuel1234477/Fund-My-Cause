@@ -55,3 +55,5 @@ pub const KEY_VESTING: Symbol = soroban_sdk::symbol_short!("VESTING");
 pub const KEY_GOAL_HISTORY: Symbol = soroban_sdk::symbol_short!("GHIST");
 /// Storage key for campaign visibility level
 pub const KEY_VISIBILITY: Symbol = soroban_sdk::symbol_short!("VIS");
+/// Storage key for metadata version history
+pub const KEY_META_HIST: Symbol = soroban_sdk::symbol_short!("METAHIST");

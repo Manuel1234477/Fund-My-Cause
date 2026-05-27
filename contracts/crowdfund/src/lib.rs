@@ -57,9 +57,9 @@ mod validation;
 pub use errors::ContractError;
 pub use storage::{
     CONTRACT_VERSION, KEY_ADMIN, KEY_CATEGORY, KEY_CONTRIBS, KEY_CREATOR, KEY_DEADLINE, KEY_DESC,
-    KEY_GOAL, KEY_GOAL_HISTORY, KEY_INSURANCE, KEY_INSURANCE_POOL, KEY_MAX, KEY_MIN, KEY_PLATFORM,
-    KEY_RATE_LIMIT, KEY_SOCIAL, KEY_STATUS, KEY_TITLE, KEY_TOKEN, KEY_TOTAL, KEY_VESTING,
-    KEY_VISIBILITY,
+    KEY_GOAL, KEY_GOAL_HISTORY, KEY_INSURANCE, KEY_INSURANCE_POOL, KEY_MAX, KEY_META_HIST,
+    KEY_MIN, KEY_PLATFORM, KEY_RATE_LIMIT, KEY_SOCIAL, KEY_STATUS, KEY_TITLE, KEY_TOKEN,
+    KEY_TOTAL, KEY_VESTING, KEY_VISIBILITY,
 };
 pub use types::{
     CampaignInfo,
@@ -70,6 +70,7 @@ pub use types::{
     ContributionRecord,
     DataKey,
     Delegation,
+    EventBatchRefundCompleted,
     EventBlacklistRemoved,
     EventBlacklisted,
     // #416
@@ -96,8 +97,10 @@ pub use types::{
     EventInsurancePayout,
     EventMatchingSetup,
     EventMetadataUpdated,
+    EventMetadataVersioned,
     EventMultiSigConfigured,
     EventPartialRefund,
+    EventPaused,
     EventRateLimitHit,
     EventRateLimitUpdated,
     EventRecurringCancelled,
@@ -107,6 +110,9 @@ pub use types::{
     // #417
     EventResumed,
     EventStatusChanged,
+    EventTemplateApplied,
+    EventTierAssigned,
+    EventTiersSet,
     EventVisibilityChanged,
     EventWhitelistOnlySet,
     EventWhitelistRemoved,
@@ -456,9 +462,29 @@ impl CrowdfundContract {
             &amount,
         );
 
+        // ── #433: Split out insurance fee if enabled ──────────────────────────
+        // The full `amount` is held in the contract, but the insurance portion
+        // is bookkept separately: it does not count toward the funding goal
+        // and is paid back to the contributor if the campaign fails.
+        let insurance_fee: i128 = inst
+            .get::<_, InsuranceConfig>(&KEY_INSURANCE)
+            .filter(|c| c.enabled)
+            .map(|c| amount * c.fee_bps as i128 / 10_000)
+            .unwrap_or(0);
+        let effective_amount = amount - insurance_fee;
+        if insurance_fee > 0 {
+            let fee_key = DataKey::InsuranceFee(contributor.clone());
+            let prev_fee: i128 = env.storage().persistent().get(&fee_key).unwrap_or(0);
+            env.storage().persistent().set(&fee_key, &(prev_fee + insurance_fee));
+            env.storage().persistent().extend_ttl(&fee_key, 100, 100);
+
+            let pool: i128 = inst.get(&KEY_INSURANCE_POOL).unwrap_or(0);
+            inst.set(&KEY_INSURANCE_POOL, &(pool + insurance_fee));
+        }
+
         // ── Update contributor balance (single write) ─────────────────────────
         let new_contrib = prev_contrib
-            .checked_add(amount)
+            .checked_add(effective_amount)
             .ok_or(ContractError::Overflow)?;
         env.storage().persistent().set(&contrib_key, &new_contrib);
         env.storage()
@@ -472,10 +498,12 @@ impl CrowdfundContract {
         }
 
         // ── Apply matching (cached instance read) ─────────────────────────────
-        let new_running_total = total.checked_add(amount).ok_or(ContractError::Overflow)?;
+        let new_running_total = total
+            .checked_add(effective_amount)
+            .ok_or(ContractError::Overflow)?;
         let mut matched_amount = 0i128;
         if let Some(config) = inst.get::<_, MatchingConfig>(&DataKey::MatchingConfig) {
-            let match_amount = (amount * config.match_ratio as i128) / 10_000;
+            let match_amount = (effective_amount * config.match_ratio as i128) / 10_000;
             let total_matched: i128 = inst.get(&DataKey::TotalMatched).unwrap_or(0);
             let available_match = config.max_match - total_matched;
             matched_amount = match_amount.min(available_match).max(0);
@@ -1958,10 +1986,19 @@ impl CrowdfundContract {
         let inst = env.storage().instance();
         let mut proposal: ExtensionProposal = inst
             .get(&DataKey::ExtensionProposal)
-            .ok_or(ContractError::InvalidRecurringPlan)?;
+            .ok_or(ContractError::ProposalNotFound)?;
 
         if env.ledger().timestamp() > proposal.voting_ends_at {
             return Err(ContractError::VotingEnded);
+        }
+
+        // Double-vote prevention: store the proposal's `created_at` as the
+        // vote marker so a fresh proposal (different created_at) is treated as
+        // a fresh ballot and stale markers from prior proposals don't block it.
+        let vote_key = DataKey::ExtensionVote(contributor.clone());
+        let last_voted: u64 = inst.get(&vote_key).unwrap_or(0);
+        if last_voted == proposal.created_at {
+            return Err(ContractError::AlreadyVoted);
         }
 
         let vote_weight: i128 = env
@@ -1983,7 +2020,7 @@ impl CrowdfundContract {
         }
 
         inst.set(&DataKey::ExtensionProposal, &proposal);
-        inst.set(&DataKey::ExtensionVote(contributor.clone()), &approve);
+        inst.set(&vote_key, &proposal.created_at);
 
         env.events().publish(
             ("campaign", "extension_voted"),
@@ -2993,6 +3030,46 @@ impl CrowdfundContract {
         env.storage().instance().get(&KEY_VESTING)
     }
 
+    /// Returns the amount of the creator payout that is currently vested.
+    ///
+    /// The vested amount is computed against the current `total_raised`, minus
+    /// the configured platform fee (if any). If no vesting schedule is set the
+    /// full post-fee payout is reported as vested. Before the cliff, 0 is
+    /// returned; after `cliff + duration`, the full post-fee payout; in
+    /// between, linear vesting based on elapsed time.
+    ///
+    /// # Arguments
+    /// * `env` - The Soroban environment
+    ///
+    /// # Returns
+    /// Vested portion of the creator payout in stroops
+    pub fn get_vested_amount(env: Env) -> i128 {
+        let inst = env.storage().instance();
+        let total: i128 = inst.get(&KEY_TOTAL).unwrap_or(0);
+        if total <= 0 {
+            return 0;
+        }
+
+        let platform_fee = inst
+            .get::<_, PlatformConfig>(&KEY_PLATFORM)
+            .map(|c| total * c.fee_bps as i128 / 10_000)
+            .unwrap_or(0);
+        let payout = total - platform_fee;
+
+        let vesting: Option<VestingSchedule> = inst.get(&KEY_VESTING);
+        let Some(v) = vesting else { return payout };
+
+        let now = env.ledger().timestamp();
+        if now < v.cliff {
+            return 0;
+        }
+        if v.duration == 0 || now >= v.cliff + v.duration {
+            return payout;
+        }
+        let elapsed = now - v.cliff;
+        payout * elapsed as i128 / v.duration as i128
+    }
+
     /// Returns the goal adjustment history.
     ///
     /// # Arguments
@@ -3203,42 +3280,63 @@ impl CrowdfundContract {
             .unwrap_or(0)
     }
 
-    /// Pays out insurance to a contributor on campaign failure.
+    /// Claims an insurance payout for a contributor of a failed campaign.
     ///
-    /// Called internally when a campaign fails and insurance is enabled.
-    /// Transfers insurance payout from the pool to the contributor.
+    /// Can only be called when the campaign is in `Cancelled` status, or when
+    /// the deadline has passed and the goal was not reached. Transfers the
+    /// per-contributor insurance fee from the contract back to the contributor
+    /// and decrements the insurance pool counter.
     ///
     /// # Arguments
     /// * `env` - The Soroban environment
-    /// * `contributor` - The contributor's address
+    /// * `contributor` - The contributor's address (must authorize)
     ///
     /// # Returns
-    /// * `Ok(())` on success
-    /// * `Err(ContractError::InsufficientFunds)` if pool is empty
-    fn process_insurance_payout(env: Env, contributor: Address) -> Result<(), ContractError> {
-        let insurance_fee: i128 = env
-            .storage()
-            .persistent()
-            .get(&DataKey::InsuranceFee(contributor.clone()))
-            .unwrap_or(0);
+    /// * `Ok(())` on success (no-op if the contributor has no insurance fee on record)
+    /// * `Err(ContractError::CampaignStillActive)` if deadline not passed and not cancelled
+    /// * `Err(ContractError::GoalReached)` if goal was reached and campaign not cancelled
+    /// * `Err(ContractError::InsufficientFunds)` if the pool is somehow below the fee
+    pub fn claim_insurance_payout(env: Env, contributor: Address) -> Result<(), ContractError> {
+        contributor.require_auth();
 
+        let inst = env.storage().instance();
+        let status: Status = inst.get(&KEY_STATUS).unwrap();
+        if status != Status::Cancelled {
+            let deadline: u64 = inst.get(&KEY_DEADLINE).unwrap();
+            if env.ledger().timestamp() < deadline {
+                return Err(ContractError::CampaignStillActive);
+            }
+            let goal: i128 = inst.get(&KEY_GOAL).unwrap();
+            let total: i128 = inst.get(&KEY_TOTAL).unwrap();
+            if total >= goal {
+                return Err(ContractError::GoalReached);
+            }
+        }
+
+        let fee_key = DataKey::InsuranceFee(contributor.clone());
+        let insurance_fee: i128 = env.storage().persistent().get(&fee_key).unwrap_or(0);
         if insurance_fee == 0 {
             return Ok(());
         }
 
-        let mut pool: i128 = env
-            .storage()
-            .instance()
-            .get(&KEY_INSURANCE_POOL)
-            .unwrap_or(0);
+        let mut pool: i128 = inst.get(&KEY_INSURANCE_POOL).unwrap_or(0);
         if pool < insurance_fee {
             return Err(ContractError::InsufficientFunds);
         }
 
+        let token_address: Address = inst.get(&KEY_TOKEN).unwrap();
+        token::Client::new(&env, &token_address).transfer(
+            &env.current_contract_address(),
+            &contributor,
+            &insurance_fee,
+        );
+
         pool = pool
             .checked_sub(insurance_fee)
             .ok_or(ContractError::Overflow)?;
-        env.storage().instance().set(&KEY_INSURANCE_POOL, &pool);
+        inst.set(&KEY_INSURANCE_POOL, &pool);
+        env.storage().persistent().set(&fee_key, &0i128);
+
         env.events().publish(
             ("insurance", "payout"),
             EventInsurancePayout {
