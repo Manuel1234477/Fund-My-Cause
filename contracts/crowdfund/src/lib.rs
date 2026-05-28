@@ -119,6 +119,7 @@ pub use types::{
     EventWhitelistRemoved,
     EventWhitelisted,
     EventWithdrawn,
+    EventOwnershipTransferred,
     ExtensionProposal,
     GoalAdjustment,
     InsuranceConfig,
@@ -2379,6 +2380,37 @@ impl CrowdfundContract {
             .instance()
             .get(&KEY_VISIBILITY)
             .unwrap_or(Visibility::Public)
+    }
+
+    /// Transfers campaign ownership to a new address (creator only).
+    ///
+    /// Updates both the creator and admin to `new_owner`. The current creator
+    /// must authorize this transaction. The new owner cannot be the same as
+    /// the current owner.
+    ///
+    /// # Returns
+    /// * `Ok(())` on success
+    /// * `Err(ContractError::Unauthorized)` if `new_owner` equals current creator
+    pub fn transfer_ownership(env: Env, new_owner: Address) -> Result<(), ContractError> {
+        let inst = env.storage().instance();
+        let creator: Address = inst.get(&KEY_CREATOR).unwrap();
+        creator.require_auth();
+
+        if new_owner == creator {
+            return Err(ContractError::Unauthorized);
+        }
+
+        inst.set(&KEY_CREATOR, &new_owner);
+        inst.set(&KEY_ADMIN, &new_owner);
+
+        env.events().publish(
+            ("campaign", "ownership_transferred"),
+            EventOwnershipTransferred {
+                previous_owner: creator,
+                new_owner,
+            },
+        );
+        Ok(())
     }
 
     // ── Delegation Functions ──────────────────────────────────────────────────

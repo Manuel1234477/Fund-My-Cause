@@ -886,3 +886,13 @@ pub struct EventArchived {
     pub total_raised: i128,
     pub timestamp: u64,
 }
+
+/// Emitted when campaign ownership is transferred to a new address.
+///
+/// Event topic: `("campaign", "ownership_transferred")`
+#[derive(Clone)]
+#[contracttype]
+pub struct EventOwnershipTransferred {
+    pub previous_owner: Address,
+    pub new_owner: Address,
+}

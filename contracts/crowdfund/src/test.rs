@@ -1512,3 +1512,45 @@ fn is_archived_returns_false_before_archiving() {
     assert!(!client.is_archived());
     assert_eq!(client.get_archived_at(), None);
 }
+
+// ── Issue #445: Transfer Ownership Tests ─────────────────────────────────────
+
+#[test]
+fn transfer_ownership_updates_creator_and_admin() {
+    let env = Env::default();
+    env.ledger().set_timestamp(1000);
+    let (creator, _token_id, client, _token_admin_client) =
+        setup_contract(&env, 2000, 100, 0);
+
+    let new_owner = Address::generate(&env);
+    client.transfer_ownership(&new_owner);
+
+    assert_eq!(client.creator(), new_owner);
+}
+
+#[test]
+#[should_panic]
+fn transfer_ownership_to_self_fails() {
+    let env = Env::default();
+    env.ledger().set_timestamp(1000);
+    let (creator, _token_id, client, _token_admin_client) =
+        setup_contract(&env, 2000, 100, 0);
+
+    // Transferring to self should fail
+    client.transfer_ownership(&creator);
+}
+
+#[test]
+fn new_owner_can_perform_creator_actions() {
+    let env = Env::default();
+    env.ledger().set_timestamp(1000);
+    let (_creator, _token_id, client, _token_admin_client) =
+        setup_contract(&env, 2000, 100, 0);
+
+    let new_owner = Address::generate(&env);
+    client.transfer_ownership(&new_owner);
+
+    // New owner should be able to cancel the campaign
+    client.cancel_campaign();
+    assert_eq!(client.status(), Status::Cancelled);
+}
