@@ -141,6 +141,21 @@ export function CampaignActions({
 
   // Refresh stats after a successful pledge
   async function handlePledgeSuccess() {
+    // Track this contribution in localStorage for the dashboard
+    if (address) {
+      try {
+        const raw = localStorage.getItem("fmc:contributions");
+        const map: Record<string, string[]> = raw ? JSON.parse(raw) : {};
+        const existing = map[address] ?? [];
+        if (!existing.includes(contractId)) {
+          map[address] = [...existing, contractId];
+          localStorage.setItem("fmc:contributions", JSON.stringify(map));
+        }
+      } catch {
+        // non-critical
+      }
+    }
+
     try {
       const stats = await getCampaignStats(contractId);
       const newRaised = Number(stats.totalRaised) / 1e7;

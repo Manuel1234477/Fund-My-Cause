@@ -2,7 +2,7 @@
 
 import React, { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Loader2, PlusCircle, BarChart2 } from "lucide-react";
+import { Loader2, PlusCircle, BarChart2, TrendingUp, Users, Wallet } from "lucide-react";
 import { Navbar } from "@/components/layout/Navbar";
 import { ProgressBar } from "@/components/ui/ProgressBar";
 import { WalletGuard } from "@/components/WalletGuard";
@@ -25,10 +25,22 @@ import {
 } from "@/lib/soroban";
 
 const REGISTRY_KEY = "fmc:campaigns";
+const CONTRIBUTIONS_KEY = "fmc:contributions";
 
 function getContractIds(address: string): string[] {
   try {
     const raw = localStorage.getItem(REGISTRY_KEY);
+    if (!raw) return [];
+    const map: Record<string, string[]> = JSON.parse(raw);
+    return map[address] ?? [];
+  } catch {
+    return [];
+  }
+}
+
+function getContributedIds(address: string): string[] {
+  try {
+    const raw = localStorage.getItem(CONTRIBUTIONS_KEY);
     if (!raw) return [];
     const map: Record<string, string[]> = JSON.parse(raw);
     return map[address] ?? [];
@@ -291,12 +303,92 @@ function DashboardCampaignCard({
   );
 }
 
+function ContributedCampaignCard({ contractId }: { contractId: string }) {
+  const { info, stats, loading } = useCampaign(contractId);
+  const router = useRouter();
+
+  if (loading || !info || !stats) {
+    return (
+      <div className="flex h-32 items-center justify-center rounded-2xl border border-gray-800 bg-gray-900">
+        <Loader2 size={20} className="animate-spin text-gray-500" />
+      </div>
+    );
+  }
+
+  const raisedXlm = Number(stats.totalRaised) / 1e7;
+  const goalXlm = Number(stats.goal) / 1e7;
+  const progress = goalXlm > 0 ? Math.min(100, (raisedXlm / goalXlm) * 100) : 0;
+
+  return (
+    <div
+      className="space-y-3 rounded-2xl border border-gray-800 bg-gray-900 p-5 cursor-pointer hover:border-gray-600 transition"
+      onClick={() => router.push(`/campaigns/${contractId}`)}
+      role="link"
+      tabIndex={0}
+      onKeyDown={(e) => e.key === "Enter" && router.push(`/campaigns/${contractId}`)}
+      aria-label={`View campaign: ${info.title}`}
+    >
+      <div className="flex items-start justify-between gap-2">
+        <h3 className="text-base font-semibold leading-tight">{info.title}</h3>
+        <StatusBadge status={info.status} />
+      </div>
+      <ProgressBar progress={progress} />
+      <div className="flex justify-between text-sm text-gray-400">
+        <span>{raisedXlm.toLocaleString(undefined, { maximumFractionDigits: 2 })} XLM raised</span>
+        <span>Goal: {goalXlm.toLocaleString(undefined, { maximumFractionDigits: 2 })} XLM</span>
+      </div>
+      <p className="truncate font-mono text-xs text-gray-600">{contractId}</p>
+    </div>
+  );
+}
+
+function DashboardStats({
+  createdIds,
+  contributedIds,
+}: {
+  createdIds: string[];
+  contributedIds: string[];
+}) {
+  return (
+    <div className="grid grid-cols-1 gap-4 sm:grid-cols-3 mb-8" data-testid="dashboard-stats">
+      <div className="rounded-2xl border border-gray-800 bg-gray-900 p-5 flex items-center gap-4">
+        <div className="rounded-xl bg-indigo-900/50 p-3">
+          <TrendingUp size={20} className="text-indigo-400" />
+        </div>
+        <div>
+          <p className="text-2xl font-bold">{createdIds.length}</p>
+          <p className="text-xs text-gray-500 mt-0.5">Campaigns Created</p>
+        </div>
+      </div>
+      <div className="rounded-2xl border border-gray-800 bg-gray-900 p-5 flex items-center gap-4">
+        <div className="rounded-xl bg-green-900/50 p-3">
+          <Wallet size={20} className="text-green-400" />
+        </div>
+        <div>
+          <p className="text-2xl font-bold">{contributedIds.length}</p>
+          <p className="text-xs text-gray-500 mt-0.5">Campaigns Backed</p>
+        </div>
+      </div>
+      <div className="rounded-2xl border border-gray-800 bg-gray-900 p-5 flex items-center gap-4">
+        <div className="rounded-xl bg-purple-900/50 p-3">
+          <Users size={20} className="text-purple-400" />
+        </div>
+        <div>
+          <p className="text-2xl font-bold">{createdIds.length + contributedIds.length}</p>
+          <p className="text-xs text-gray-500 mt-0.5">Total Campaigns</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function DashboardPage() {
   const { address, signTx, networkMismatch } = useWallet();
   const { addNotification } = useNotifications();
   const router = useRouter();
 
   const [contractIds, setContractIds] = useState<string[]>([]);
+  const [contributedIds, setContributedIds] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [actionPending, setActionPending] = useState<string | null>(null);
@@ -311,8 +403,10 @@ export default function DashboardPage() {
 
     try {
       setContractIds(getContractIds(walletAddress));
+      setContributedIds(getContributedIds(walletAddress));
     } catch {
       setContractIds([]);
+      setContributedIds([]);
       setLoadError("Failed to load campaigns.");
     } finally {
       setLoading(false);
@@ -322,6 +416,7 @@ export default function DashboardPage() {
   useEffect(() => {
     if (!address) {
       setContractIds([]);
+      setContributedIds([]);
       return;
     }
 
@@ -411,7 +506,7 @@ export default function DashboardPage() {
       <WalletGuard message="Connect your wallet to view your dashboard.">
         <div className="mx-auto max-w-4xl px-6 py-12">
           <div className="mb-8 flex items-center justify-between">
-            <h1 className="text-3xl font-bold">My Campaigns</h1>
+            <h1 className="text-3xl font-bold">My Dashboard</h1>
             <button
               onClick={() => router.push("/create")}
               disabled={networkMismatch}
@@ -421,30 +516,67 @@ export default function DashboardPage() {
             </button>
           </div>
 
-          {!loading && contractIds.length === 0 && (
-            <EmptyState
-              illustration={<NoDashboardCampaignsIllustration />}
-              title="No campaigns yet"
-              description="You haven't created any campaigns. Launch your first one and start raising funds on Stellar."
-              action={{ label: "Create Campaign", onClick: () => router.push("/create") }}
-            />
+          {/* Statistics */}
+          {(contractIds.length > 0 || contributedIds.length > 0) && (
+            <DashboardStats createdIds={contractIds} contributedIds={contributedIds} />
           )}
 
-          <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
-            {contractIds.map((contractId) => (
-              <DashboardCampaignCard
-                key={contractId}
-                contractId={contractId}
-                onAction={handleAction}
-                onCancel={(id, title) => setCancelTarget({ contractId: id, title })}
-                onPauseToggle={handlePauseToggle}
-                onEdit={setEditTarget}
-                onExtend={(id, deadline) => setExtendTarget({ contractId: id, currentDeadline: deadline })}
-                actionPending={actionPending}
-                refreshNonce={refreshNonce}
+          {/* Created campaigns */}
+          <section aria-labelledby="created-campaigns-heading" className="mb-10">
+            <h2 id="created-campaigns-heading" className="text-xl font-semibold mb-4">
+              My Campaigns
+            </h2>
+
+            {!loading && contractIds.length === 0 && (
+              <EmptyState
+                illustration={<NoDashboardCampaignsIllustration />}
+                title="No campaigns yet"
+                description="You haven't created any campaigns. Launch your first one and start raising funds on Stellar."
+                action={{ label: "Create Campaign", onClick: () => router.push("/create") }}
               />
-            ))}
-          </div>
+            )}
+
+            <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
+              {contractIds.map((contractId) => (
+                <DashboardCampaignCard
+                  key={contractId}
+                  contractId={contractId}
+                  onAction={handleAction}
+                  onCancel={(id, title) => setCancelTarget({ contractId: id, title })}
+                  onPauseToggle={handlePauseToggle}
+                  onEdit={setEditTarget}
+                  onExtend={(id, deadline) => setExtendTarget({ contractId: id, currentDeadline: deadline })}
+                  actionPending={actionPending}
+                  refreshNonce={refreshNonce}
+                />
+              ))}
+            </div>
+          </section>
+
+          {/* Contributed campaigns */}
+          <section aria-labelledby="contributed-campaigns-heading">
+            <h2 id="contributed-campaigns-heading" className="text-xl font-semibold mb-4">
+              Campaigns I&apos;ve Backed
+            </h2>
+
+            {!loading && contributedIds.length === 0 && (
+              <p className="text-sm text-gray-500">
+                You haven&apos;t backed any campaigns yet.{" "}
+                <button
+                  onClick={() => router.push("/campaigns")}
+                  className="text-indigo-400 hover:underline"
+                >
+                  Explore campaigns
+                </button>
+              </p>
+            )}
+
+            <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
+              {contributedIds.map((contractId) => (
+                <ContributedCampaignCard key={contractId} contractId={contractId} />
+              ))}
+            </div>
+          </section>
         </div>
 
         {editTarget && (

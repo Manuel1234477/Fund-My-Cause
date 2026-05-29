@@ -56,12 +56,21 @@ mod validation;
 
 pub use errors::ContractError;
 pub use storage::{
-    CONTRACT_VERSION, KEY_ADMIN, KEY_ANALYTICS, KEY_ANALYTICS_DATA, KEY_CATEGORY, KEY_CONTRIBS,
+    CONTRACT_VERSION, MIN_SUPPORTED_VERSION,
+    KEY_ADMIN, KEY_ANALYTICS, KEY_ANALYTICS_DATA, KEY_ARCHIVED, KEY_CATEGORY, KEY_CONTRIBS,
     KEY_CREATOR, KEY_DEADLINE, KEY_DESC, KEY_DISPUTE_ID, KEY_DISPUTE_VOTE, KEY_DISPUTES, KEY_GOAL,
     KEY_GOAL_HISTORY, KEY_INSURANCE, KEY_INSURANCE_POOL, KEY_MAX, KEY_META_HIST, KEY_MILESTONE_STATUS,
     KEY_MILESTONES, KEY_MIN, KEY_NEXT_RELEASE, KEY_PLATFORM, KEY_RATE_LIMIT, KEY_SOCIAL,
     KEY_START_TIME, KEY_STATUS, KEY_TITLE, KEY_TOKEN, KEY_TOTAL, KEY_VERIFICATION, KEY_VESTING,
     KEY_VISIBILITY,
+    // #457
+    KEY_CONTRACT_VERSION, KEY_VERSION_HISTORY,
+    // #458
+    KEY_LAST_VALIDATION,
+    // #459
+    KEY_DEBUG_SNAPSHOT,
+    // #460
+    KEY_PERF_THRESHOLD, KEY_PERF_STATS,
 };
 pub use types::{
     CampaignAnalytics,
@@ -139,6 +148,7 @@ pub use types::{
     EventWhitelisted,
     EventWithdrawn,
     EventOwnershipTransferred,
+    EventArchived,
     ExtensionProposal,
     GoalAdjustment,
     InsuranceConfig,
@@ -158,6 +168,23 @@ pub use types::{
     VerificationStatus,
     VestingSchedule,
     Visibility,
+    // #457
+    VersionMigration,
+    EventVersionChecked,
+    EventContractMigrated,
+    // #458
+    StateValidationResult,
+    EventStateValidated,
+    EventInvariantViolated,
+    // #459
+    ContractStateSnapshot,
+    EventDebugSnapshot,
+    EventDebugLog,
+    // #460
+    ExecutionRecord,
+    FunctionPerfStats,
+    EventExecutionRecorded,
+    EventPerfAlert,
 };
 pub use validation::*;
 
@@ -3931,6 +3958,346 @@ impl CrowdfundContract {
             },
         );
         Ok(())
+    }
+
+    // ── Issue #457: Contract Versioning ──────────────────────────────────────
+
+    /// Returns the current contract version constant.
+    pub fn contract_version(_env: Env) -> u32 {
+        CONTRACT_VERSION
+    }
+
+    /// Checks whether the on-chain stored version is compatible with the current binary.
+    ///
+    /// Emits `EventVersionChecked`. Returns `true` if compatible.
+    pub fn check_version(env: Env) -> bool {
+        let stored: u32 = env
+            .storage()
+            .instance()
+            .get(&KEY_CONTRACT_VERSION)
+            .unwrap_or(CONTRACT_VERSION);
+        let compatible = stored >= storage::MIN_SUPPORTED_VERSION && stored <= CONTRACT_VERSION;
+        env.events().publish(
+            ("contract", "version_checked"),
+            EventVersionChecked {
+                current_version: CONTRACT_VERSION,
+                expected_version: stored,
+                compatible,
+            },
+        );
+        compatible
+    }
+
+    /// Migrates the on-chain version record to the current binary version (admin only).
+    ///
+    /// Records the migration in persistent history and emits `EventContractMigrated`.
+    ///
+    /// # Returns
+    /// * `Ok(())` on success
+    /// * `Err(ContractError::Unauthorized)` if caller is not admin
+    pub fn migrate_version(env: Env) -> Result<(), ContractError> {
+        let inst = env.storage().instance();
+        let admin: Address = inst.get(&KEY_ADMIN).unwrap();
+        admin.require_auth();
+
+        let from_version: u32 = inst.get(&KEY_CONTRACT_VERSION).unwrap_or(0);
+        let now = env.ledger().timestamp();
+
+        inst.set(&KEY_CONTRACT_VERSION, &CONTRACT_VERSION);
+
+        let mut history: Vec<VersionMigration> = env
+            .storage()
+            .persistent()
+            .get(&KEY_VERSION_HISTORY)
+            .unwrap_or_else(|| Vec::new(&env));
+        history.push_back(VersionMigration {
+            from_version,
+            to_version: CONTRACT_VERSION,
+            timestamp: now,
+        });
+        env.storage().persistent().set(&KEY_VERSION_HISTORY, &history);
+        env.storage().persistent().extend_ttl(&KEY_VERSION_HISTORY, 100, 100);
+
+        env.events().publish(
+            ("contract", "migrated"),
+            EventContractMigrated {
+                from_version,
+                to_version: CONTRACT_VERSION,
+                timestamp: now,
+            },
+        );
+        Ok(())
+    }
+
+    /// Returns the full version migration history.
+    pub fn get_version_history(env: Env) -> Vec<VersionMigration> {
+        env.storage()
+            .persistent()
+            .get(&KEY_VERSION_HISTORY)
+            .unwrap_or_else(|| Vec::new(&env))
+    }
+
+    // ── Issue #458: State Validation ─────────────────────────────────────────
+
+    /// Runs all state invariant checks and returns a validation result.
+    ///
+    /// Invariants checked:
+    /// 1. `total_raised >= 0`
+    /// 2. `goal > 0`
+    /// 3. `deadline > 0`
+    /// 4. `total_raised <= goal * 2` (sanity upper bound)
+    /// 5. `contributor_count` is a valid u32 (always true, structural check)
+    ///
+    /// Emits `EventStateValidated` and `EventInvariantViolated` for each failure.
+    pub fn validate_state(env: Env) -> StateValidationResult {
+        let inst = env.storage().instance();
+        let total_raised: i128 = inst.get(&KEY_TOTAL).unwrap_or(0);
+        let goal: i128 = inst.get(&KEY_GOAL).unwrap_or(0);
+        let deadline: u64 = inst.get(&KEY_DEADLINE).unwrap_or(0);
+        let contributor_count: u32 = inst.get(&DataKey::ContributorCount).unwrap_or(0);
+        let now = env.ledger().timestamp();
+
+        let mut passed = 0u32;
+        let mut failed = 0u32;
+
+        // Invariant 1: total_raised >= 0
+        if total_raised >= 0 {
+            passed += 1;
+        } else {
+            failed += 1;
+            env.events().publish(
+                ("contract", "invariant_violated"),
+                EventInvariantViolated { invariant_id: 1, timestamp: now },
+            );
+        }
+
+        // Invariant 2: goal > 0
+        if goal > 0 {
+            passed += 1;
+        } else {
+            failed += 1;
+            env.events().publish(
+                ("contract", "invariant_violated"),
+                EventInvariantViolated { invariant_id: 2, timestamp: now },
+            );
+        }
+
+        // Invariant 3: deadline > 0
+        if deadline > 0 {
+            passed += 1;
+        } else {
+            failed += 1;
+            env.events().publish(
+                ("contract", "invariant_violated"),
+                EventInvariantViolated { invariant_id: 3, timestamp: now },
+            );
+        }
+
+        // Invariant 4: total_raised <= goal * 2 (overflow-safe)
+        let upper_bound = goal.saturating_mul(2);
+        if total_raised <= upper_bound {
+            passed += 1;
+        } else {
+            failed += 1;
+            env.events().publish(
+                ("contract", "invariant_violated"),
+                EventInvariantViolated { invariant_id: 4, timestamp: now },
+            );
+        }
+
+        // Invariant 5: contributor_count structural check (u32 is always >= 0)
+        let _ = contributor_count;
+        passed += 1;
+
+        let result = StateValidationResult {
+            valid: failed == 0,
+            checks_passed: passed,
+            checks_failed: failed,
+            timestamp: now,
+        };
+
+        inst.set(&KEY_LAST_VALIDATION, &result);
+
+        env.events().publish(
+            ("contract", "state_validated"),
+            EventStateValidated {
+                valid: result.valid,
+                checks_passed: passed,
+                checks_failed: failed,
+                timestamp: now,
+            },
+        );
+
+        result
+    }
+
+    /// Returns the result of the last `validate_state` call, if any.
+    pub fn get_last_validation(env: Env) -> Option<StateValidationResult> {
+        env.storage().instance().get(&KEY_LAST_VALIDATION)
+    }
+
+    // ── Issue #459: Debugging Utilities ──────────────────────────────────────
+
+    /// Takes a snapshot of the current contract state for debugging.
+    ///
+    /// Stores the snapshot in instance storage and emits `EventDebugSnapshot`.
+    pub fn debug_snapshot(env: Env) -> ContractStateSnapshot {
+        let inst = env.storage().instance();
+        let now = env.ledger().timestamp();
+        let snapshot = ContractStateSnapshot {
+            version: CONTRACT_VERSION,
+            status: inst.get(&KEY_STATUS).unwrap_or(Status::Active),
+            total_raised: inst.get(&KEY_TOTAL).unwrap_or(0),
+            goal: inst.get(&KEY_GOAL).unwrap_or(0),
+            contributor_count: inst.get(&DataKey::ContributorCount).unwrap_or(0),
+            deadline: inst.get(&KEY_DEADLINE).unwrap_or(0),
+            timestamp: now,
+        };
+
+        inst.set(&KEY_DEBUG_SNAPSHOT, &snapshot);
+
+        env.events().publish(
+            ("debug", "snapshot"),
+            EventDebugSnapshot {
+                version: snapshot.version,
+                status: snapshot.status.clone(),
+                total_raised: snapshot.total_raised,
+                contributor_count: snapshot.contributor_count,
+                timestamp: now,
+            },
+        );
+
+        snapshot
+    }
+
+    /// Returns the most recent debug snapshot, if any.
+    pub fn get_debug_snapshot(env: Env) -> Option<ContractStateSnapshot> {
+        env.storage().instance().get(&KEY_DEBUG_SNAPSHOT)
+    }
+
+    /// Emits a debug log event with a custom message (admin only).
+    ///
+    /// # Returns
+    /// * `Ok(())` on success
+    /// * `Err(ContractError::Unauthorized)` if caller is not admin
+    pub fn debug_log(env: Env, message: String) -> Result<(), ContractError> {
+        let admin: Address = env.storage().instance().get(&KEY_ADMIN).unwrap();
+        admin.require_auth();
+
+        let now = env.ledger().timestamp();
+        env.events().publish(
+            ("debug", "log"),
+            EventDebugLog { message, timestamp: now },
+        );
+        Ok(())
+    }
+
+    /// Inspects the contribution balance for a specific address (admin only).
+    ///
+    /// Returns the stored contribution amount without requiring contributor auth.
+    pub fn inspect_contribution(env: Env, contributor: Address) -> Result<i128, ContractError> {
+        let admin: Address = env.storage().instance().get(&KEY_ADMIN).unwrap();
+        admin.require_auth();
+
+        Ok(env
+            .storage()
+            .persistent()
+            .get(&DataKey::Contribution(contributor))
+            .unwrap_or(0))
+    }
+
+    // ── Issue #460: Performance Monitoring ───────────────────────────────────
+
+    /// Sets the performance alert threshold in milliseconds (admin only).
+    ///
+    /// When a recorded execution duration exceeds this threshold, an
+    /// `EventPerfAlert` is emitted. Set to 0 to disable alerting.
+    pub fn set_perf_threshold(env: Env, threshold_ms: u64) -> Result<(), ContractError> {
+        let admin: Address = env.storage().instance().get(&KEY_ADMIN).unwrap();
+        admin.require_auth();
+
+        env.storage().instance().set(&KEY_PERF_THRESHOLD, &threshold_ms);
+        Ok(())
+    }
+
+    /// Returns the current performance alert threshold in milliseconds.
+    pub fn get_perf_threshold(env: Env) -> u64 {
+        env.storage()
+            .instance()
+            .get(&KEY_PERF_THRESHOLD)
+            .unwrap_or(0)
+    }
+
+    /// Records an execution time observation for a named function (admin only).
+    ///
+    /// Updates the per-function `FunctionPerfStats` in persistent storage and
+    /// emits `EventExecutionRecorded`. If the duration exceeds the configured
+    /// threshold, also emits `EventPerfAlert`.
+    pub fn record_execution(
+        env: Env,
+        function_name: String,
+        duration_ms: u64,
+    ) -> Result<(), ContractError> {
+        let admin: Address = env.storage().instance().get(&KEY_ADMIN).unwrap();
+        admin.require_auth();
+
+        let now = env.ledger().timestamp();
+        let stats_key = DataKey::PerfStats(function_name.clone());
+
+        let mut stats: FunctionPerfStats = env
+            .storage()
+            .persistent()
+            .get(&stats_key)
+            .unwrap_or(FunctionPerfStats {
+                call_count: 0,
+                total_duration_ms: 0,
+                max_duration_ms: 0,
+            });
+
+        stats.call_count += 1;
+        stats.total_duration_ms = stats.total_duration_ms.saturating_add(duration_ms);
+        if duration_ms > stats.max_duration_ms {
+            stats.max_duration_ms = duration_ms;
+        }
+
+        env.storage().persistent().set(&stats_key, &stats);
+        env.storage().persistent().extend_ttl(&stats_key, 100, 100);
+
+        env.events().publish(
+            ("perf", "execution_recorded"),
+            EventExecutionRecorded {
+                function_name: function_name.clone(),
+                duration_ms,
+                timestamp: now,
+            },
+        );
+
+        // Alert if threshold is set and exceeded
+        let threshold: u64 = env
+            .storage()
+            .instance()
+            .get(&KEY_PERF_THRESHOLD)
+            .unwrap_or(0);
+        if threshold > 0 && duration_ms > threshold {
+            env.events().publish(
+                ("perf", "alert"),
+                EventPerfAlert {
+                    function_name,
+                    duration_ms,
+                    threshold_ms: threshold,
+                    timestamp: now,
+                },
+            );
+        }
+
+        Ok(())
+    }
+
+    /// Returns the performance stats for a named function.
+    pub fn get_perf_stats(env: Env, function_name: String) -> Option<FunctionPerfStats> {
+        env.storage()
+            .persistent()
+            .get(&DataKey::PerfStats(function_name))
     }
 
     // ── Issue #436: Campaign Milestones ───────────────────────────────────────

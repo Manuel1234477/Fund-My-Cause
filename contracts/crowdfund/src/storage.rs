@@ -4,7 +4,10 @@
 use soroban_sdk::Symbol;
 
 /// Contract version for upgrades and compatibility tracking
-pub const CONTRACT_VERSION: u32 = 4;
+pub const CONTRACT_VERSION: u32 = 5;
+
+/// Minimum supported version for migration (versions below this require a full re-deploy)
+pub const MIN_SUPPORTED_VERSION: u32 = 1;
 
 /// Maximum number of updates per campaign
 pub const MAX_UPDATES: u32 = 100;
@@ -59,6 +62,8 @@ pub const KEY_VISIBILITY: Symbol = soroban_sdk::symbol_short!("VIS");
 pub const KEY_META_HIST: Symbol = soroban_sdk::symbol_short!("METAHIST");
 /// Storage key for campaign start timestamp
 pub const KEY_START_TIME: Symbol = soroban_sdk::symbol_short!("START");
+/// Storage key for campaign archival timestamp
+pub const KEY_ARCHIVED: Symbol = soroban_sdk::symbol_short!("ARCHIVED");
 
 // ── Issue #436: Campaign Milestones ───────────────────────────────────────────
 /// Storage key for milestones list
@@ -85,3 +90,23 @@ pub const KEY_DISPUTES: Symbol = soroban_sdk::symbol_short!("DISPUTES");
 pub const KEY_DISPUTE_ID: Symbol = soroban_sdk::symbol_short!("DISPID");
 /// Storage key for dispute votes by address
 pub const KEY_DISPUTE_VOTE: Symbol = soroban_sdk::symbol_short!("DISPVOTE");
+
+// ── Issue #457: Contract Versioning ──────────────────────────────────────────
+/// Storage key for the on-chain stored contract version (set during migration)
+pub const KEY_CONTRACT_VERSION: Symbol = soroban_sdk::symbol_short!("CVER");
+/// Storage key for version migration history
+pub const KEY_VERSION_HISTORY: Symbol = soroban_sdk::symbol_short!("VERHIST");
+
+// ── Issue #458: State Validation ──────────────────────────────────────────────
+/// Storage key for the last state validation result
+pub const KEY_LAST_VALIDATION: Symbol = soroban_sdk::symbol_short!("LASTVAL");
+
+// ── Issue #459: Debugging Utilities ──────────────────────────────────────────
+/// Storage key for the latest debug snapshot
+pub const KEY_DEBUG_SNAPSHOT: Symbol = soroban_sdk::symbol_short!("DBGSNAP");
+
+// ── Issue #460: Performance Monitoring ───────────────────────────────────────
+/// Storage key for performance alert threshold in ms (0 = disabled)
+pub const KEY_PERF_THRESHOLD: Symbol = soroban_sdk::symbol_short!("PERFTHR");
+/// Storage key for per-function performance stats prefix
+pub const KEY_PERF_STATS: Symbol = soroban_sdk::symbol_short!("PERFST");

@@ -10,6 +10,8 @@ export interface ProgressBarProps {
   value?: number;
   indeterminate?: boolean;
   label?: string;
+  showPercentage?: boolean;
+  animate?: boolean;
   className?: string;
   size?: "sm" | "md" | "lg";
 }
@@ -18,6 +20,8 @@ export function ProgressBar({
   value,
   indeterminate = false,
   label,
+  showPercentage = false,
+  animate = true,
   className,
   size = "md",
 }: ProgressBarProps) {
@@ -26,15 +30,13 @@ export function ProgressBar({
     value !== undefined ? Math.min(100, Math.max(0, value)) : 0;
 
   return (
-    <div
-      className={cn("w-full", className)}
-      role="progressbar"
-      aria-label={label ?? "Loading"}
-      aria-valuenow={indeterminate ? undefined : clampedValue}
-      aria-valuemin={0}
-      aria-valuemax={100}
-    >
+    <div className={cn("w-full", className)}>
       <div
+        role="progressbar"
+        aria-label={label ?? "Loading"}
+        aria-valuenow={indeterminate ? undefined : clampedValue}
+        aria-valuemin={0}
+        aria-valuemax={100}
         className={cn(
           "w-full rounded-full bg-gray-800 overflow-hidden",
           heights[size],
@@ -44,12 +46,27 @@ export function ProgressBar({
           <div className="h-full w-1/3 bg-[var(--color-brand)] rounded-full animate-[indeterminate_1.5s_ease-in-out_infinite]" />
         ) : (
           <div
-            className="h-full bg-[var(--color-brand)] rounded-full transition-all duration-300 ease-out"
+            className={cn(
+              "h-full bg-[var(--color-brand)] rounded-full",
+              animate && "transition-all duration-500 ease-out",
+            )}
             style={{ width: `${clampedValue}%` }}
           />
         )}
       </div>
-      {label && <p className="mt-1 text-xs text-gray-500">{label}</p>}
+      <div className="flex justify-between mt-1">
+        {label && <p className="text-xs text-gray-500">{label}</p>}
+        {showPercentage && !indeterminate && (
+          <p
+            className={cn(
+              "text-xs font-medium text-[var(--color-brand)] ml-auto",
+            )}
+            aria-hidden="true"
+          >
+            {Math.round(clampedValue)}%
+          </p>
+        )}
+      </div>
     </div>
   );
 }
@@ -62,6 +79,8 @@ export interface CircularProgressProps {
   size?: number;
   strokeWidth?: number;
   label?: string;
+  showPercentage?: boolean;
+  animate?: boolean;
   className?: string;
 }
 
@@ -71,6 +90,8 @@ export function CircularProgress({
   size = 40,
   strokeWidth = 4,
   label,
+  showPercentage = false,
+  animate = true,
   className,
 }: CircularProgressProps) {
   const r = (size - strokeWidth) / 2;
@@ -81,7 +102,7 @@ export function CircularProgress({
 
   return (
     <div
-      className={cn("inline-flex items-center justify-center", className)}
+      className={cn("inline-flex items-center justify-center relative", className)}
       role="progressbar"
       aria-label={label ?? "Loading"}
       aria-valuenow={indeterminate ? undefined : clampedValue}
@@ -110,10 +131,22 @@ export function CircularProgress({
           strokeDasharray={circumference}
           strokeDashoffset={indeterminate ? circumference * 0.75 : offset}
           strokeLinecap="round"
-          className="text-[var(--color-brand)] transition-all duration-300"
+          className={cn(
+            "text-[var(--color-brand)]",
+            animate && "transition-all duration-500 ease-out",
+          )}
           transform={`rotate(-90 ${size / 2} ${size / 2})`}
         />
       </svg>
+      {showPercentage && !indeterminate && (
+        <span
+          className="absolute text-[var(--color-brand)] font-medium"
+          style={{ fontSize: Math.max(8, size * 0.22) }}
+          aria-hidden="true"
+        >
+          {Math.round(clampedValue)}%
+        </span>
+      )}
     </div>
   );
 }
@@ -153,6 +186,7 @@ export function LoadingMessage({
         <ProgressBar
           value={progress}
           indeterminate={indeterminate && progress === undefined}
+          showPercentage={progress !== undefined}
           className="w-48"
           size="sm"
         />

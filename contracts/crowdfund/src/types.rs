@@ -334,6 +334,9 @@ pub enum DataKey {
     TitleIndex,
     /// Campaign category index for filtering
     CategoryIndex,
+    // #460: per-function performance stats
+    /// Performance stats for a named function
+    PerfStats(String),
 }
 
 /// Recurring contribution plan.
@@ -1134,5 +1137,173 @@ pub struct EventDisputeResolved {
     pub status: DisputeStatus,
     pub votes_for: i128,
     pub votes_against: i128,
+    pub timestamp: u64,
+}
+
+// ── Issue #457: Contract Versioning ──────────────────────────────────────────
+
+/// Records a contract version migration.
+#[derive(Clone)]
+#[contracttype]
+pub struct VersionMigration {
+    /// Version migrated from
+    pub from_version: u32,
+    /// Version migrated to
+    pub to_version: u32,
+    /// Timestamp of migration
+    pub timestamp: u64,
+}
+
+/// Emitted when the contract version is checked.
+///
+/// Event topic: `("contract", "version_checked")`
+#[derive(Clone)]
+#[contracttype]
+pub struct EventVersionChecked {
+    pub current_version: u32,
+    pub expected_version: u32,
+    pub compatible: bool,
+}
+
+/// Emitted when a contract migration is executed.
+///
+/// Event topic: `("contract", "migrated")`
+#[derive(Clone)]
+#[contracttype]
+pub struct EventContractMigrated {
+    pub from_version: u32,
+    pub to_version: u32,
+    pub timestamp: u64,
+}
+
+// ── Issue #458: State Validation ──────────────────────────────────────────────
+
+/// Result of a full state invariant check.
+#[derive(Clone)]
+#[contracttype]
+pub struct StateValidationResult {
+    /// Whether all invariants passed
+    pub valid: bool,
+    /// Number of invariants checked
+    pub checks_passed: u32,
+    /// Number of invariants that failed
+    pub checks_failed: u32,
+    /// Timestamp of the validation
+    pub timestamp: u64,
+}
+
+/// Emitted when state validation is run.
+///
+/// Event topic: `("contract", "state_validated")`
+#[derive(Clone)]
+#[contracttype]
+pub struct EventStateValidated {
+    pub valid: bool,
+    pub checks_passed: u32,
+    pub checks_failed: u32,
+    pub timestamp: u64,
+}
+
+/// Emitted when a state invariant violation is detected.
+///
+/// Event topic: `("contract", "invariant_violated")`
+#[derive(Clone)]
+#[contracttype]
+pub struct EventInvariantViolated {
+    pub invariant_id: u32,
+    pub timestamp: u64,
+}
+
+// ── Issue #459: Debugging Utilities ──────────────────────────────────────────
+
+/// A snapshot of the full contract state for debugging.
+#[derive(Clone)]
+#[contracttype]
+pub struct ContractStateSnapshot {
+    /// Current contract version
+    pub version: u32,
+    /// Current campaign status
+    pub status: Status,
+    /// Total raised
+    pub total_raised: i128,
+    /// Campaign goal
+    pub goal: i128,
+    /// Number of contributors
+    pub contributor_count: u32,
+    /// Campaign deadline
+    pub deadline: u64,
+    /// Snapshot timestamp
+    pub timestamp: u64,
+}
+
+/// Emitted when a debug state snapshot is taken.
+///
+/// Event topic: `("debug", "snapshot")`
+#[derive(Clone)]
+#[contracttype]
+pub struct EventDebugSnapshot {
+    pub version: u32,
+    pub status: Status,
+    pub total_raised: i128,
+    pub contributor_count: u32,
+    pub timestamp: u64,
+}
+
+/// Emitted for a debug log entry.
+///
+/// Event topic: `("debug", "log")`
+#[derive(Clone)]
+#[contracttype]
+pub struct EventDebugLog {
+    pub message: String,
+    pub timestamp: u64,
+}
+
+// ── Issue #460: Performance Monitoring ───────────────────────────────────────
+
+/// Records execution time for a contract function.
+#[derive(Clone)]
+#[contracttype]
+pub struct ExecutionRecord {
+    /// Name/identifier of the function
+    pub function_name: String,
+    /// Ledger timestamp when the call was recorded
+    pub timestamp: u64,
+    /// Execution duration in ledger time units (approximated)
+    pub duration_ms: u64,
+}
+
+/// Aggregated performance stats for a function.
+#[derive(Clone)]
+#[contracttype]
+pub struct FunctionPerfStats {
+    /// Total number of calls recorded
+    pub call_count: u32,
+    /// Cumulative duration across all calls
+    pub total_duration_ms: u64,
+    /// Maximum single-call duration observed
+    pub max_duration_ms: u64,
+}
+
+/// Emitted when a function execution time is recorded.
+///
+/// Event topic: `("perf", "execution_recorded")`
+#[derive(Clone)]
+#[contracttype]
+pub struct EventExecutionRecorded {
+    pub function_name: String,
+    pub duration_ms: u64,
+    pub timestamp: u64,
+}
+
+/// Emitted when a performance alert threshold is breached.
+///
+/// Event topic: `("perf", "alert")`
+#[derive(Clone)]
+#[contracttype]
+pub struct EventPerfAlert {
+    pub function_name: String,
+    pub duration_ms: u64,
+    pub threshold_ms: u64,
     pub timestamp: u64,
 }
