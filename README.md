@@ -292,6 +292,18 @@ We follow [coordinated disclosure](https://en.wikipedia.org/wiki/Coordinated_vul
 
 ---
 
+## Developer Resources
+
+| Resource | Description |
+|----------|-------------|
+| [docs/api/](./docs/api/README.md) | Full contract API reference — every function, type, event, and error code |
+| [docs/tutorials/](./docs/tutorials/README.md) | Step-by-step guides: getting started, contributing, dashboards, matching, saved searches |
+| [sdks/js/](./sdks/js/README.md) | TypeScript SDK — typed client for all contract operations |
+| [playground/](./playground/README.md) | Interactive testnet playground — query and invoke contracts from the CLI or REST Client |
+| [examples/](./examples/README.md) | Runnable integration examples (Node.js + React) |
+
+---
+
 ## Contributing
 
 1. Fork the repo

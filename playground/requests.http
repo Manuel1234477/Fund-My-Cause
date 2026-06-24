@@ -1,0 +1,91 @@
+### Fund-My-Cause — Soroban RPC playground
+### Requires the REST Client VS Code extension:
+### https://marketplace.visualstudio.com/items?itemName=humao.rest-client
+###
+### Replace {{contractId}} with your deployed contract address.
+### Set these variables in a .env file or VS Code REST Client settings.
+
+@rpcUrl     = https://soroban-testnet.stellar.org
+@contractId = CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM
+
+### ── 1. Get latest ledger (health check) ────────────────────────────────────
+GET {{rpcUrl}}/
+Content-Type: application/json
+
+###
+
+### ── 2. Simulate get_stats ────────────────────────────────────────────────
+# Paste the XDR of a simulateTransaction request here.
+# Easiest to generate it with the Stellar Laboratory:
+# https://laboratory.stellar.org/#contract-explorer?network=testnet
+#
+# Or use the SDK:
+#   const tx = buildViewTx("get_stats", []);
+#   const xdr = tx.toXDR();
+
+POST {{rpcUrl}}/
+Content-Type: application/json
+
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "simulateTransaction",
+  "params": {
+    "transaction": "<PASTE_TX_XDR_HERE>"
+  }
+}
+
+###
+
+### ── 3. Get transaction status ───────────────────────────────────────────────
+
+POST {{rpcUrl}}/
+Content-Type: application/json
+
+{
+  "jsonrpc": "2.0",
+  "id": 2,
+  "method": "getTransaction",
+  "params": {
+    "hash": "<PASTE_TX_HASH_HERE>"
+  }
+}
+
+###
+
+### ── 4. Get contract events ───────────────────────────────────────────────
+
+POST {{rpcUrl}}/
+Content-Type: application/json
+
+{
+  "jsonrpc": "2.0",
+  "id": 3,
+  "method": "getEvents",
+  "params": {
+    "startLedger": 1000000,
+    "filters": [
+      {
+        "type": "contract",
+        "contractIds": ["{{contractId}}"],
+        "topics": [["*", "*"]]
+      }
+    ],
+    "pagination": { "limit": 20 }
+  }
+}
+
+###
+
+### ── 5. Get latest ledger sequence ──────────────────────────────────────────
+
+POST {{rpcUrl}}/
+Content-Type: application/json
+
+{
+  "jsonrpc": "2.0",
+  "id": 4,
+  "method": "getLatestLedger"
+}
+
+###

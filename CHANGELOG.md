@@ -8,6 +8,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- `docs/api/` — structured API reference for both contracts: `crowdfund.md`,
+  `registry.md`, `types.md`, `errors.md`, `events.md`, each cross-linked.
+- `docs/tutorials/` — six step-by-step guides: getting started, campaign
+  creation, accepting contributions, building a dashboard, donation matching,
+  and saved-search alerts.
+- `sdks/js/` — typed JavaScript/TypeScript SDK (`@fund-my-cause/sdk`) exposing
+  `FmcClient` (all read + write methods), `FmcRegistryClient`, `FmcContractError`,
+  and unit-conversion helpers (`xlmToStroops`, `stroopsToXlm`, etc.).
+- `sdks/js/src/utils.test.ts` — unit tests for all SDK utility functions.
+- `playground/` — interactive testnet playground: `query.js` (read-only CLI),
+  `contribute.js` (send a contribution), `run.js` (interactive menu), and
+  `requests.http` (VS Code REST Client snippets for raw Soroban RPC calls).
+- `examples/` — five runnable integration examples: `basic-campaign`,
+  `campaign-list`, `donation-matching`, `contribution-widget` (React), and
+  `event-listener` (on-chain event polling).
 - Initial project setup with Soroban smart contracts
 - Decentralized crowdfunding platform on Stellar network
 - Pull-based refund model for scalable fund distribution
