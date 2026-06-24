@@ -1,0 +1,200 @@
+import express from "express";
+import cors from "cors";
+import { createServer } from "http";
+import { WebSocketServer } from "ws";
+import { useServer } from "graphql-ws/lib/use/ws";
+import { ApolloServer } from "@apollo/server";
+import { expressMiddleware } from "@apollo/server/express4";
+import { createRedisClient } from "./redis.js";
+import { CacheService } from "./services/cache.js";
+import { ContractService } from "./services/contract.js";
+import { createDataLoaders } from "./services/dataloader.js";
+import { getPubSub } } from "./services/pubsub.js";
+import { AuthService } from "./services/auth.js";
+import { RateLimiterService } from "./services/rate-limiter.js";
+import { typeDefs } from "./schema.js";
+import { resolvers } from "./resolvers.js";
+import type { Context } from "./types.js";
+
+const PORT = process.env.GRAPHQL_PORT ? parseInt(process.env.GRAPHQL_PORT) : 4000;
+const NODE_ENV = process.env.NODE_ENV || "development";
+const RPC_URL = process.env.RPC_URL || "https://soroban-testnet.stellar.org";
+const CONTRACT_NETWORK = process.env.CONTRACT_NETWORK || "testnet";
+const JWT_SECRET = process.env.JWT_SECRET || "your-secret-key-change-in-production";
+
+/**
+ * Initialize and start the GraphQL server
+ */
+async function startServer() {
+  try {
+    console.log(`🚀 Starting GraphQL API Server...`);
+    console.log(`   Environment: ${NODE_ENV}`);
+    console.log(`   Port: ${PORT}`);
+
+    // Initialize Redis connection
+    const redis = await createRedisClient();
+    console.log("✅ Redis connection established");
+
+    // Initialize services
+    const cacheService = new CacheService(redis);
+    const contractService = new ContractService(RPC_URL, CONTRACT_NETWORK as "testnet" | "mainnet");
+    const dataLoaders = createDataLoaders(contractService);
+    const pubsub = getPubSub();
+    const authService = new AuthService(JWT_SECRET);
+    const rateLimiter = new RateLimiterService(redis);
+
+    console.log("✅ Services initialized");
+
+    // Create Express app
+    const app = express();
+    const httpServer = createServer(app);
+
+    // CORS configuration
+    const corsOptions = {
+      origin: process.env.CORS_ORIGIN ? process.env.CORS_ORIGIN.split(",") : ["http://localhost:3000", "http://localhost:5173"],
+      credentials: true,
+      methods: ["GET", "POST", "OPTIONS"],
+      allowedHeaders: ["Content-Type", "Authorization"],
+    };
+
+    app.use(cors(corsOptions));
+    app.use(express.json({ limit: "10mb" }));
+
+    // Health check endpoint
+    app.get("/health", (req, res) => {
+      res.json({ status: "ok", timestamp: new Date().toISOString() });
+    });
+
+    // Metrics endpoint
+    app.get("/metrics", async (req, res) => {
+      try {
+        const cacheStats = await cacheService.getStats();
+        res.json({
+          cache: cacheStats,
+          uptime: process.uptime(),
+          environment: NODE_ENV,
+        });
+      } catch (error) {
+        res.status(500).json({ error: "Failed to get metrics" });
+      }
+    });
+
+    // Create Apollo Server
+    const apolloServer = new ApolloServer<Context>({
+      typeDefs,
+      resolvers,
+      introspection: NODE_ENV !== "production",
+      plugins: {
+        async serverWillStart() {
+          console.log("✅ Apollo Server starting");
+          return {
+            async drainServer() {
+              await pubsub.close();
+            },
+          };
+        },
+      },
+    });
+
+    await apolloServer.start();
+    console.log("✅ Apollo Server started");
+
+    // Setup WebSocket server for subscriptions
+    const wsServer = new WebSocketServer({ server: httpServer, path: "/graphql" });
+
+    useServer({ schema: apolloServer.schema }, wsServer);
+    console.log("✅ WebSocket server configured");
+
+    // Apply Apollo middleware
+    app.post("/graphql", expressMiddleware(apolloServer, {
+      context: async ({ req, res }) => {
+        try {
+          // Rate limiting
+          const ip = req.ip || "unknown";
+          await rateLimiter.checkIpLimit(ip);
+
+          // Extract and verify JWT token
+          let user: any = undefined;
+          const authHeader = req.headers.authorization;
+          if (authHeader) {
+            const token = authService.extractTokenFromHeader(authHeader);
+            if (token) {
+              const decoded = authService.verifyToken(token);
+              if (decoded) {
+                // Check user rate limit
+                await rateLimiter.checkUserLimit(decoded.address);
+                user = {
+                  address: decoded.address,
+                  isAuthenticated: true,
+                };
+              }
+            }
+          }
+
+          return {
+            cache: cacheService,
+            contractService,
+            dataLoader: dataLoaders,
+            pubsub,
+            authService,
+            user,
+            redis,
+          } as Context;
+        } catch (error: any) {
+          console.error("Context error:", error);
+          if (error.retryAfter) {
+            res.set("Retry-After", error.retryAfter.toString());
+          }
+          throw error;
+        }
+      },
+    }));
+
+    // Error handling middleware
+    app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
+      console.error("Request error:", err);
+
+      if (err.message?.includes("rate limit")) {
+        return res.status(429).json({
+          error: err.message,
+          retryAfter: err.retryAfter || 60,
+        });
+      }
+
+      res.status(500).json({
+        error: NODE_ENV === "production" ? "Internal server error" : err.message,
+      });
+    });
+
+    // Start server
+    await new Promise<void>((resolve, reject) => {
+      httpServer.listen(PORT, "0.0.0.0", () => {
+        console.log(`\n🎉 GraphQL API Server is running!`);
+        console.log(`📝 GraphQL Endpoint: http://localhost:${PORT}/graphql`);
+        console.log(`🔔 WebSocket Subscriptions: ws://localhost:${PORT}/graphql`);
+        console.log(`💚 Health Check: http://localhost:${PORT}/health`);
+        console.log(`📊 Metrics: http://localhost:${PORT}/metrics\n`);
+        resolve();
+      }).on("error", reject);
+    });
+
+    // Graceful shutdown
+    const signals = ["SIGTERM", "SIGINT"];
+    signals.forEach((signal) => {
+      process.on(signal, async () => {
+        console.log(`\n🛑 Received ${signal}, shutting down gracefully...`);
+        await apolloServer.stop();
+        await pubsub.close();
+        httpServer.close(() => {
+          console.log("✅ Server closed");
+          process.exit(0);
+        });
+      });
+    });
+  } catch (error) {
+    console.error("❌ Failed to start server:", error);
+    process.exit(1);
+  }
+}
+
+startServer();
