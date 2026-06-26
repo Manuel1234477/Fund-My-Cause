@@ -4,7 +4,9 @@ import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Navbar } from "@/components/layout/Navbar";
-import { ProgressBar } from "@/components/ui/ProgressBar";
+import { CampaignSelector } from "@/components/ui/CampaignSelector";
+import { ComparisonTable } from "@/components/ui/ComparisonTable";
+import { ComparisonChart } from "@/components/ui/ComparisonChart";
 import { useComparison } from "@/context/ComparisonContext";
 import { ALL_CAMPAIGNS } from "@/lib/campaigns";
 import { formatXlm } from "@/lib/price";
@@ -52,7 +54,7 @@ export default function ComparePage() {
 
   if (campaigns.length === 0) {
     return (
-      <main className="min-h-screen bg-gray-950 text-white">
+      <main className="min-h-screen bg-[var(--color-background)] text-[var(--color-text-primary)]">
         <Navbar />
         <div className="max-w-4xl mx-auto px-6 py-24 text-center">
           <p className="text-gray-400 mb-4">
@@ -97,9 +99,10 @@ export default function ComparePage() {
   ];
 
   return (
-    <main className="min-h-screen bg-gray-950 text-white">
+    <main className="min-h-screen bg-[var(--color-background)] text-[var(--color-text-primary)]">
       <Navbar />
-      <div className="max-w-6xl mx-auto px-6 py-12">
+      <div className="max-w-7xl mx-auto px-6 py-12">
+        {/* Header */}
         <div className="flex items-center justify-between mb-8 flex-wrap gap-3">
           <div className="flex items-center gap-3">
             <button
@@ -113,7 +116,32 @@ export default function ComparePage() {
               ({campaigns.length} selected)
             </span>
           </div>
-          <div className="flex gap-2">
+
+          <div className="flex items-center gap-2 flex-wrap">
+            {/* Campaign selector */}
+            <CampaignSelector />
+
+            {/* View mode toggle */}
+            <div className="flex rounded-xl border border-[var(--color-border)] overflow-hidden">
+              {VIEW_MODES.map((mode) => (
+                <button
+                  key={mode.value}
+                  onClick={() => setViewMode(mode.value)}
+                  aria-pressed={viewMode === mode.value}
+                  className={cn(
+                    "flex items-center gap-1.5 px-3 py-2 text-xs font-medium transition",
+                    viewMode === mode.value
+                      ? "bg-[var(--color-brand)] text-white"
+                      : "bg-[var(--color-surface)] text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]",
+                  )}
+                >
+                  {mode.icon}
+                  {mode.label}
+                </button>
+              ))}
+            </div>
+
+            {/* Actions */}
             <button
               onClick={handleShare}
               className="flex items-center gap-2 px-4 py-2 rounded-xl bg-gray-800 hover:bg-gray-700 text-sm transition"
@@ -128,7 +156,8 @@ export default function ComparePage() {
             </button>
             <button
               onClick={clear}
-              className="flex items-center gap-2 px-4 py-2 rounded-xl bg-gray-800 hover:bg-gray-700 text-sm transition"
+              aria-label="Clear all campaigns"
+              className="flex items-center gap-2 px-4 py-2 rounded-xl bg-[var(--color-surface-elevated)] hover:bg-[var(--color-border-subtle)] text-sm text-[var(--color-text-secondary)] transition"
             >
               <X size={14} /> Clear
             </button>
@@ -180,12 +209,16 @@ export default function ComparePage() {
           </table>
         </div>
 
-        <p className="text-xs text-gray-600 mt-4">
+        {/* Footer hint */}
+        <p className="text-xs text-[var(--color-text-muted)] mt-8 text-center">
           Select up to 4 campaigns from the{" "}
-          <Link href="/campaigns" className="text-indigo-400 hover:underline">
+          <Link
+            href="/campaigns"
+            className="text-[var(--color-brand)] hover:underline"
+          >
             campaigns page
           </Link>{" "}
-          to compare.
+          or use the &quot;Add Campaign&quot; button above to compare.
         </p>
       </div>
     </main>

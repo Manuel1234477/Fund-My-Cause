@@ -1,0 +1,202 @@
+global:
+  resolve_timeout: 5m
+  pagerduty_url: 'https://events.pagerduty.com/v2/enqueue'
+  slack_api_url: 'YOUR_SLACK_WEBHOOK_URL'
+
+# The root route with all parameters, which are inherited by the child routes if they are not overwritten.
+route:
+  receiver: 'default'
+  group_by: ['alertname', 'cluster', 'service']
+  group_wait: 10s
+  group_interval: 10s
+  repeat_interval: 12h
+
+  routes:
+    # Critical alerts - PagerDuty + Slack
+    - match:
+        severity: critical
+      receiver: 'pagerduty-critical'
+      group_wait: 0s
+      repeat_interval: 5m
+      continue: true
+
+    # Warning alerts - Slack
+    - match:
+        severity: warning
+      receiver: 'slack-warnings'
+      group_wait: 30s
+      repeat_interval: 2h
+      continue: true
+
+    # Info alerts - Slack (low priority)
+    - match:
+        severity: info
+      receiver: 'slack-info'
+      group_wait: 60s
+      repeat_interval: 24h
+      continue: true
+
+    # Business alerts - Dedicated Slack channel
+    - match:
+        category: business
+      receiver: 'slack-business'
+      group_wait: 5m
+      repeat_interval: 1h
+      continue: true
+
+    # DeFi alerts - PagerDuty + Slack
+    - match:
+        category: defi
+      receiver: 'pagerduty-defi'
+      group_wait: 1m
+      repeat_interval: 15m
+      continue: true
+
+    # Infrastructure alerts - Slack
+    - match:
+        category: infrastructure
+      receiver: 'slack-infrastructure'
+      group_wait: 30s
+      repeat_interval: 1h
+      continue: true
+
+    # Observability alerts - Slack
+    - match:
+        category: observability
+      receiver: 'slack-observability'
+      group_wait: 30s
+      repeat_interval: 2h
+      continue: true
+
+# Inhibition rules
+inhibit_rules:
+  # Don't send warning if critical is already firing
+  - source_match:
+      severity: 'critical'
+    target_match:
+      severity: 'warning'
+    equal: ['alertname', 'dev', 'instance']
+
+  # Don't send info if warning is already firing
+  - source_match:
+      severity: 'warning'
+    target_match:
+      severity: 'info'
+    equal: ['alertname', 'dev', 'instance']
+
+# Receivers
+receivers:
+  # Default receiver
+  - name: 'default'
+    slack_configs:
+      - channel: '#alerts'
+        title: 'Alert: {{ .GroupLabels.alertname }}'
+        text: '{{ range .Alerts }}{{ .Annotations.description }}{{ end }}'
+        send_resolved: true
+
+  # Critical PagerDuty receiver
+  - name: 'pagerduty-critical'
+    pagerduty_configs:
+      - service_key: 'YOUR_PAGERDUTY_SERVICE_KEY'
+        description: '{{ .GroupLabels.alertname }}'
+        details:
+          firing: '{{ template "pagerduty.default.instances" .Alerts.Firing }}'
+          resolved: '{{ template "pagerduty.default.instances" .Alerts.Resolved }}'
+        client: 'Fund My Cause Monitoring'
+        client_url: 'http://grafana:3000'
+    slack_configs:
+      - channel: '#critical-alerts'
+        title: '🚨 CRITICAL: {{ .GroupLabels.alertname }}'
+        text: |
+          {{ range .Alerts.Firing }}
+          *{{ .Labels.alertname }}* ({{ .Labels.severity }})
+          {{ .Annotations.description }}
+          {{ end }}
+        send_resolved: true
+        color: 'danger'
+        actions:
+          - type: button
+            text: 'View in Grafana'
+            url: 'http://grafana:3000'
+          - type: button
+            text: 'Acknowledge'
+            url: 'http://alertmanager:9093'
+
+  # DeFi PagerDuty receiver
+  - name: 'pagerduty-defi'
+    pagerduty_configs:
+      - service_key: 'YOUR_PAGERDUTY_DEFI_SERVICE_KEY'
+        description: '{{ .GroupLabels.alertname }}'
+        details:
+          firing: '{{ template "pagerduty.default.instances" .Alerts.Firing }}'
+        client: 'Fund My Cause DeFi Monitoring'
+        client_url: 'http://grafana:3000/d/defi-alerts'
+    slack_configs:
+      - channel: '#defi-alerts'
+        title: '⚠️ DeFi Alert: {{ .GroupLabels.alertname }}'
+        text: |
+          {{ range .Alerts.Firing }}
+          *{{ .Labels.alertname }}*
+          {{ .Annotations.description }}
+          {{ end }}
+        send_resolved: true
+
+  # Slack Warning receiver
+  - name: 'slack-warnings'
+    slack_configs:
+      - channel: '#warnings'
+        title: '⚠️ WARNING: {{ .GroupLabels.alertname }}'
+        text: |
+          {{ range .Alerts.Firing }}
+          {{ .Annotations.description }}
+          {{ end }}
+        send_resolved: true
+        color: 'warning'
+
+  # Slack Info receiver
+  - name: 'slack-info'
+    slack_configs:
+      - channel: '#alerts'
+        title: 'ℹ️ INFO: {{ .GroupLabels.alertname }}'
+        text: |
+          {{ range .Alerts.Firing }}
+          {{ .Annotations.description }}
+          {{ end }}
+        send_resolved: true
+        color: 'good'
+
+  # Business alerts receiver
+  - name: 'slack-business'
+    slack_configs:
+      - channel: '#business-metrics'
+        title: '📊 Business Alert: {{ .GroupLabels.alertname }}'
+        text: |
+          {{ range .Alerts.Firing }}
+          {{ .Annotations.description }}
+          {{ end }}
+        send_resolved: true
+        color: '#FFA500'
+
+  # Infrastructure alerts receiver
+  - name: 'slack-infrastructure'
+    slack_configs:
+      - channel: '#infrastructure'
+        title: '🏗️ Infrastructure: {{ .GroupLabels.alertname }}'
+        text: |
+          {{ range .Alerts.Firing }}
+          {{ .Annotations.description }}
+          {{ end }}
+        send_resolved: true
+        color: '#4285F4'
+
+  # Observability alerts receiver
+  - name: 'slack-observability'
+    slack_configs:
+      - channel: '#observability'
+        title: '🔍 Observability: {{ .GroupLabels.alertname }}'
+        text: |
+          {{ range .Alerts.Firing }}
+          {{ .Annotations.description }}
+          {{ end }}
+        send_resolved: true
+        color: '#9C27B0'

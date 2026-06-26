@@ -296,3 +296,124 @@ Add to your release workflow:
 - [Deployment Guide](./deployment.md)
 - [Docker Guide](./docker.md)
 - [CI/CD Guide](./ci-cd.md)
+
+---
+
+## Backend Services (API & Indexer)
+
+The same blue-green pattern applies to the two backend services:
+
+| Service | Blue port | Green port |
+|---|---|---|
+| Recommendation API | 8000 | 8001 |
+| Fraud Detection API | 8002 | 8003 |
+
+### Architecture
+
+```
+┌─────────────────────────────────────────────────┐
+│                  Load Balancer                  │
+│               (nginx / HAProxy)                 │
+└───────────────┬─────────────────────────────────┘
+                │
+     ┌──────────┴──────────┐
+     │                     │
+ ┌───▼────┐           ┌───▼────┐
+ │  Blue  │           │ Green  │
+ │ :8000  │           │ :8001  │
+ └────────┘           └────────┘
+  (active)             (standby)
+```
+
+### Slot Definitions
+
+Each slot runs a dedicated container (or k8s Deployment) tagged with the image SHA:
+
+```bash
+# Blue slot — currently serving traffic
+docker run -d --name recommendations-blue -p 8000:8000 \
+  fund-my-cause/recommendations:blue-latest
+
+# Green slot — deploy new version here first
+docker run -d --name recommendations-green -p 8001:8000 \
+  fund-my-cause/recommendations:<new-sha>
+```
+
+Repeat the same pattern for the fraud-detection service on ports 8002/8003.
+
+### Health-Gated Traffic Switch
+
+Only switch traffic once the new slot passes its health check:
+
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+
+NEW_PORT=${1:?usage: switch-backend.sh <new_port> <service_name>}
+SERVICE=${2:?}
+NGINX_CONF=/etc/nginx/conf.d/${SERVICE}.conf
+
+# 1. Wait for health
+for i in $(seq 1 30); do
+  if curl -sf "http://localhost:${NEW_PORT}/health" > /dev/null; then
+    echo "Health check passed on port ${NEW_PORT}"
+    break
+  fi
+  echo "Waiting... ($i/30)"
+  sleep 5
+  [[ $i -eq 30 ]] && { echo "Health check timed out"; exit 1; }
+done
+
+# 2. Atomically rewrite the upstream and reload
+sed -i "s/server localhost:[0-9]\+;/server localhost:${NEW_PORT};/" "${NGINX_CONF}"
+nginx -s reload
+echo "Traffic switched to port ${NEW_PORT}"
+```
+
+### Database Migration Compatibility
+
+Backend services share a read-only view of indexed chain data. When a migration is needed:
+
+1. **Add columns only** — never drop or rename in the same release.
+2. Deploy the new schema with the *green* slot before switching traffic.
+3. The *blue* slot continues reading the old columns (which still exist) until it is replaced.
+4. After the switch is stable (≥ 1 deployment cycle), drop deprecated columns in a follow-up migration.
+
+This ensures both slots are compatible with the live schema at all times.
+
+### Rollback
+
+```bash
+# Identify the currently active port
+ACTIVE=$(cat /tmp/${SERVICE}_active_port.txt)
+
+# Switch back to the previous port
+PREVIOUS=$([ "$ACTIVE" = "8000" ] && echo "8001" || echo "8000")
+bash scripts/switch-backend.sh "$PREVIOUS" "$SERVICE"
+
+# Stop the failed slot
+docker stop ${SERVICE}-green
+```
+
+Rollback restores the previous slot in < 30 seconds. The failed container is stopped but not deleted — its logs remain available for post-mortem analysis.
+
+### CI/CD Integration
+
+```yaml
+# .github/workflows/blue-green-deploy.yml (backend jobs)
+- name: Deploy green slot
+  run: docker run -d --name ${{ env.SERVICE }}-green -p ${{ env.GREEN_PORT }}:8000
+       fund-my-cause/${{ env.SERVICE }}:${{ github.sha }}
+
+- name: Switch traffic
+  run: bash scripts/switch-backend.sh ${{ env.GREEN_PORT }} ${{ env.SERVICE }}
+
+- name: Stop old blue slot
+  run: docker stop ${{ env.SERVICE }}-blue || true
+```
+
+### Acceptance Criteria
+
+- Backend releases swap with **zero downtime**: health check gates the switch.
+- Rollback **restores the previous slot cleanly** in < 30 seconds.
+- Both slots are always **DB-migration compatible** via additive-only schema changes.

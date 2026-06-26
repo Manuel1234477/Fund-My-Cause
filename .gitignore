@@ -6,3 +6,4 @@ target
 .env
 .env.local
 # Cargo.lock is intentionally tracked — see README
+task1.md

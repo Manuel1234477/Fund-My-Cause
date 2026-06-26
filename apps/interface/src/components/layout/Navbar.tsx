@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 import {
   Wallet,
   Rocket,
@@ -13,7 +13,9 @@ import {
   Bell,
   AlertTriangle,
   Globe,
+  HelpCircle,
 } from "lucide-react";
+import { ProductTour } from "@/components/ui/ProductTour";
 import { useWallet } from "@/context/WalletContext";
 import { useTheme } from "@/context/ThemeContext";
 import { useNotifications } from "@/context/NotificationContext";
@@ -93,6 +95,7 @@ export function Navbar() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [notifOpen, setNotifOpen] = useState(false);
   const t = useTranslations("nav");
+  const replayTourRef = useRef<(() => void) | null>(null);
 
   return (
     <div>
@@ -131,6 +134,7 @@ export function Navbar() {
               onClick={connect}
               disabled={isConnecting}
               aria-label={t("connectWallet")}
+              data-tour="connect-wallet"
               className="ds-btn-primary flex items-center gap-2 px-4 py-2 text-sm disabled:opacity-50"
             >
               {isConnecting ? (
@@ -179,6 +183,15 @@ export function Navbar() {
           </button>
 
           <LanguageSelector />
+
+          <button
+            onClick={() => replayTourRef.current?.()}
+            className={iconBtnCls}
+            aria-label="Replay product tour"
+            title="Replay tour"
+          >
+            <HelpCircle size={18} />
+          </button>
         </div>
 
         {/* Mobile menu button */}
@@ -308,6 +321,8 @@ export function Navbar() {
           <Loader2 size={12} className="animate-spin" /> {t("restoringSession")}
         </div>
       )}
+
+      <ProductTour onReplayRef={replayTourRef} />
     </div>
   );
 }

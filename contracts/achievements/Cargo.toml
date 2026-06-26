@@ -1,0 +1,16 @@
+[package]
+name = "achievements"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "Fund-My-Cause achievements and NFT badges smart contract for the Stellar/Soroban network"
+documentation = "https://fund-my-cause.github.io/Fund-My-Cause/achievements"
+readme = "../../README.md"
+license = "MIT"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+doctest = false
+
+[dependencies]
+soroban-sdk = { workspace = true }

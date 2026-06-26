@@ -3,7 +3,7 @@
 /// This module contains validation functions for campaign parameters and operations.
 use crate::errors::ContractError;
 use crate::types::Status;
-use soroban_sdk::{Address, String};
+use soroban_sdk::Address;
 
 /// Validates campaign initialization parameters.
 ///
@@ -332,6 +332,37 @@ pub fn validate_address_not_self(
 pub fn validate_fee_bps(fee_bps: u32) -> Result<(), ContractError> {
     if fee_bps > 10_000 {
         return Err(ContractError::InvalidFee);
+    }
+    Ok(())
+}
+
+/// Validates that a non-cancelled campaign is refundable (deadline passed, goal not met).
+///
+/// Call this only when `status != Cancelled`; the cancelled path skips all checks.
+/// Combining the deadline and goal checks into one function allows both
+/// `refund_single` and `refund_batch` to share the same short-circuit logic.
+///
+/// # Arguments
+/// * `now` - Current ledger timestamp
+/// * `deadline` - Campaign deadline timestamp
+/// * `total` - Total amount raised
+/// * `goal` - Campaign funding goal
+///
+/// # Returns
+/// * `Ok(())` if the campaign is eligible for refunds
+/// * `Err(ContractError::CampaignStillActive)` if the deadline has not passed
+/// * `Err(ContractError::GoalReached)` if the goal was met
+pub fn validate_refund_eligibility(
+    now: u64,
+    deadline: u64,
+    total: i128,
+    goal: i128,
+) -> Result<(), ContractError> {
+    if now < deadline {
+        return Err(ContractError::CampaignStillActive);
+    }
+    if total >= goal {
+        return Err(ContractError::GoalReached);
     }
     Ok(())
 }

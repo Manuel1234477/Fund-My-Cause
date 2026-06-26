@@ -76,4 +76,56 @@ pub enum ContractError {
     InsufficientFunds = 32,
     /// Caller is not authorized for this operation
     Unauthorized = 33,
+    /// Rate limit configuration is invalid (negative amount or zero window)
+    InvalidRateLimit = 34,
+    /// Multi-sig approval requirement not met
+    MultiSigNotMet = 35,
+    /// Proposal not found
+    ProposalNotFound = 36,
+    /// Already voted on proposal
+    AlreadyVoted = 37,
+    /// Rewards not configured for this campaign
+    NoRewardsConfigured = 38,
+    /// Caller is not the campaign creator
+    NotCreator = 39,
+    /// Milestone not found
+    MilestoneNotFound = 40,
+    /// Milestone already reached
+    MilestoneAlreadyReached = 41,
+    /// Verification status is not approved
+    VerificationNotApproved = 42,
+    /// Dispute not found
+    DisputeNotFound = 43,
+    /// Dispute already voted on by this address
+    DisputeAlreadyVoted = 44,
+    /// Dispute voting period has ended
+    DisputeVotingEnded = 45,
+    /// Analytics not available
+    AnalyticsNotAvailable = 46,
+    /// Governance proposal not found
+    GovernanceProposalNotFound = 47,
+    /// Already voted on this governance proposal
+    GovernanceAlreadyVoted = 48,
+    /// Voting period for governance proposal has ended
+    GovernanceVotingEnded = 49,
+    /// Not enough approvals to execute governance proposal
+    GovernanceNotEnoughApprovals = 50,
+    /// Governance timelock has not yet expired
+    GovernanceTimelockPending = 51,
+    /// Address is not a designated governor
+    GovernanceNotGovernor = 52,
+    /// Governance proposal is not in a ready state
+    GovernanceProposalNotReady = 53,
+    /// Governance proposal has already been executed
+    GovernanceAlreadyExecuted = 54,
+    /// Contract is emergency paused by governance
+    GovernanceEmergencyPaused = 55,
+    /// Reentrancy detected (function called recursively)
+    ReentrancyDetected = 56,
+    /// Emergency pause is active
+    EmergencyPauseActive = 57,
+    /// Invalid input provided
+    InvalidInput = 58,
+    /// Requested item not found
+    NotFound = 59,
 }

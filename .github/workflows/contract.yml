@@ -37,6 +37,15 @@ jobs:
       - name: Run registry tests
         run: cargo test --workspace --manifest-path contracts/registry/Cargo.toml
       
+      - name: Run fuzz tests (property-based)
+        run: cargo test --test fuzz_tests --manifest-path contracts/crowdfund/Cargo.toml -- --nocapture
+      
+      - name: Run invariant tests
+        run: cargo test --test invariants --manifest-path contracts/crowdfund/Cargo.toml -- --nocapture
+      
+      - name: Run adversarial tests
+        run: cargo test --test adversarial --manifest-path contracts/crowdfund/Cargo.toml -- --nocapture
+      
       - name: Run clippy
         run: cargo clippy --workspace --all-targets --manifest-path contracts/crowdfund/Cargo.toml -- -D warnings
       

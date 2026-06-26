@@ -1,53 +1,30 @@
 /**
  * Central export for all application types.
- * Consolidates types from Campaign, Soroban contract, API responses, components, and utilities.
+ * Domain types are re-exported from @fund-my-cause/types to prevent drift.
+ * Frontend-specific types (component props, hooks, contexts) remain local.
  */
 
-// Campaign types
-export type { Campaign, FAQ, TeamMember, TrustSignalData } from "./campaign";
-
-// Soroban contract types
+// Domain types - re-exported from shared package
 export type {
-  CampaignStatus,
-  CampaignInfo,
-  CampaignStats,
-  PlatformConfig,
-  StatusVariant,
-  ContributionRecord,
-  InitializeParams,
-  CampaignData,
-} from "./soroban";
+  Campaign, FAQ, TeamMember, TrustSignalData,
+  CampaignStatus, CampaignInfo, CampaignStats,
+  PlatformConfig, StatusVariant, ContributionRecord,
+  InitializeParams, CampaignData,
+  Milestone, MilestoneInput,
+  Comment, CommentInput, CommentVote,
+  ApiResponse, ApiError, PaginatedResponse,
+  CampaignListResponse, CampaignResponse,
+  FAQResponse, TeamMemberResponse, MilestoneResponse,
+  ContributionResponse, UserProfileResponse,
+  TransactionResponse, WalletBalanceResponse,
+  SearchResponse, StatisticsResponse,
+  NotificationResponse, CommentResponse,
+  ActivityFeedResponse,
+} from "@fund-my-cause/types";
 
-// Contract types
+// Contract types (frontend-specific)
 export type { SignFn } from "./contract";
 export { ContractError } from "./contract";
-
-// Comment types
-export type { Comment } from "./comment";
-
-// Milestone types
-export type { Milestone } from "./milestone";
-
-// API response types
-export type {
-  ApiResponse,
-  ApiError,
-  PaginatedResponse,
-  CampaignListResponse,
-  CampaignResponse,
-  FAQResponse,
-  TeamMemberResponse,
-  MilestoneResponse,
-  ContributionResponse,
-  UserProfileResponse,
-  TransactionResponse,
-  WalletBalanceResponse,
-  SearchResponse,
-  StatisticsResponse,
-  NotificationResponse,
-  CommentResponse,
-  ActivityFeedResponse,
-} from "./api";
 
 // Component prop types
 export type {

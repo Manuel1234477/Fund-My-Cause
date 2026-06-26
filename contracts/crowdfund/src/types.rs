@@ -20,6 +20,8 @@ pub enum Status {
     Cancelled,
     /// Campaign is temporarily paused (no new contributions allowed)
     Paused,
+    /// Campaign has been archived for historical reference
+    Archived,
 }
 
 /// Campaign statistics snapshot.
@@ -172,6 +174,38 @@ pub struct CampaignTemplate {
     pub goal_multiplier: u32,
 }
 
+/// Per-address rate limit configuration for contributions.
+///
+/// Limits the total amount a single address can contribute within a configurable
+/// time window. The window is tracked per-address from the moment of the first
+/// contribution in the window; once `window_seconds` have elapsed without a new
+/// contribution, the period resets.
+#[derive(Clone, Debug, PartialEq)]
+#[contracttype]
+pub struct RateLimit {
+    /// Maximum total contribution amount per address within `window_seconds`.
+    pub max_amount: i128,
+    /// Length of the per-address window in seconds.
+    pub window_seconds: u64,
+}
+
+/// Campaign visibility level.
+///
+/// Controls who can contribute and whether the campaign is publicly discoverable.
+/// `Private` campaigns restrict contributions to whitelisted addresses; `Public`
+/// and `Unlisted` campaigns place no extra access restriction here, but `Unlisted`
+/// signals to frontends that the campaign should not appear in discovery feeds.
+#[derive(Clone, Copy, Debug, PartialEq)]
+#[contracttype]
+pub enum Visibility {
+    /// Listed publicly; anyone may contribute.
+    Public,
+    /// Whitelist-only contributions; not listed in discovery.
+    Private,
+    /// Anyone may contribute; not listed in discovery.
+    Unlisted,
+}
+
 /// Delegation configuration.
 #[derive(Clone)]
 #[contracttype]
@@ -182,6 +216,42 @@ pub struct Delegation {
     pub delegate: Address,
     /// Whether delegation is active
     pub active: bool,
+}
+
+/// Reward tier for contribution amounts.
+///
+/// Defines a named reward tier that contributors reach based on their total
+/// cumulative contribution.  Tiers should be stored sorted by `min_amount`
+/// in ascending order.
+///
+/// # Example
+/// ```ignore
+/// // Bronze: ≥ 100 stroops, Silver: ≥ 1_000, Gold: ≥ 10_000
+/// ```
+#[derive(Clone, PartialEq, Debug)]
+#[contracttype]
+pub struct RewardTier {
+    /// Minimum cumulative contribution required to qualify (in stroops)
+    pub min_amount: i128,
+    /// Short display name for the tier (e.g. "Bronze", "Silver", "Gold")
+    pub name: String,
+    /// Human-readable description of what this tier unlocks
+    pub description: String,
+}
+
+/// An immutable record of a single contribution.
+///
+/// Appended to each contributor's persistent history every time they call
+/// [`contribute`](crate::CrowdfundContract::contribute).
+#[derive(Clone)]
+#[contracttype]
+pub struct ContributionRecord {
+    /// Amount transferred in this contribution (in stroops)
+    pub amount: i128,
+    /// Ledger timestamp at the moment the contribution was accepted
+    pub timestamp: u64,
+    /// Contributor's cumulative total after this contribution
+    pub running_total: i128,
 }
 
 /// Storage key variants for contract data.
@@ -236,8 +306,51 @@ pub enum DataKey {
     MatchingConfig,
     /// Total matched amount
     TotalMatched,
+    /// Escrowed matching pool (tokens held by contract on behalf of sponsor)
+    MatchingPool,
     /// Penalty basis points
     PenaltyBps,
+    /// Ordered list of reward tiers configured by the creator
+    RewardTiers,
+    /// Best reward tier currently assigned to a specific contributor
+    ContributorTier(Address),
+    /// Full contribution history for a specific contributor
+    ContributionHistory(Address),
+    /// Required number of approvals for emergency withdrawal multi-sig
+    EmergencyApproversRequired,
+    /// Running approval count for the active emergency withdrawal session
+    EmergencyApprovalCount,
+    /// Session token (lock_until timestamp) that a specific address last approved
+    EmergencyApproval(Address),
+    /// Authorized approver addresses for emergency multi-sig
+    EmergencyApproversList,
+    /// Reward configuration for the campaign
+    RewardConfig,
+    /// Total rewards distributed
+    TotalRewardsDistributed,
+    /// Rewards claimed by a specific contributor
+    RewardsClaimed(Address),
+    /// Search index entry for the campaign
+    SearchIndex,
+    /// Campaign title index for search
+    TitleIndex,
+    /// Campaign category index for filtering
+    CategoryIndex,
+    // #460: per-function performance stats
+    /// Performance stats for a named function
+    PerfStats(String),
+    /// Indexed contributor address — key is the contributor's insertion order (0-based).
+    /// Replaces the monolithic KEY_CONTRIBS Vec to give O(1) per-write cost and
+    /// O(page_size) pagination instead of O(n) reads of the full list.
+    ContributorIndex(u32),
+    /// Yield accounting info for a specific contributor
+    YieldInfo(Address),
+    /// Governance proposal by nonce
+    GovernanceProposal(u32),
+    /// Emergency pause approval by governor address
+    EmergencyPauseApproval(Address),
+    /// Running emergency pause approval count
+    EmergencyPauseApprovals,
 }
 
 /// Recurring contribution plan.
@@ -288,6 +401,47 @@ pub struct InsuranceConfig {
     pub provider: Address,
     /// Whether insurance is enabled for this campaign
     pub enabled: bool,
+}
+
+/// Multi-signature governance configuration.
+///
+/// Defines the set of authorized governors, minimum approvals required
+/// for proposals, and the timelock delay before execution.
+#[derive(Clone)]
+#[contracttype]
+pub struct GovernanceConfig {
+    /// List of authorized governor addresses
+    pub governors: Vec<soroban_sdk::Address>,
+    /// Minimum number of approvals required to pass a proposal
+    pub required_approvals: u32,
+    /// Timelock delay in seconds before proposal execution
+    pub timelock_delay: u64,
+}
+
+/// Governance proposal for platform configuration changes.
+///
+/// Tracks a proposed platform config update with voting and timelock status.
+#[derive(Clone)]
+#[contracttype]
+pub struct GovernanceProposal {
+    /// Unique proposal nonce/ID
+    pub nonce: u32,
+    /// Address of the governor who created the proposal
+    pub proposer: soroban_sdk::Address,
+    /// Proposed platform fee recipient address
+    pub platform_address: soroban_sdk::Address,
+    /// Proposed platform fee in basis points
+    pub platform_fee_bps: u32,
+    /// Timestamp when the proposal was created
+    pub created_at: u64,
+    /// Timestamp when voting ends
+    pub voting_ends_at: u64,
+    /// Number of approvals received
+    pub approvals: u32,
+    /// Timestamp when the timelock expires (0 if not yet met threshold)
+    pub timelock_until: u64,
+    /// Whether the proposal has been executed
+    pub executed: bool,
 }
 
 // ── Missing types referenced in lib.rs ───────────────────────────────────────
@@ -560,7 +714,35 @@ pub struct EventWhitelistOnlySet {
 #[derive(Clone)]
 #[contracttype]
 pub struct EventRateLimitUpdated {
-    pub max_amount_per_hour: i128,
+    /// Maximum total contribution amount per address within `window_seconds`.
+    pub max_amount: i128,
+    /// Window length in seconds (0 when the rate limit is cleared).
+    pub window_seconds: u64,
+}
+
+/// Emitted when a contribution is rejected because it would exceed the rate limit.
+///
+/// Event topic: `("campaign", "rate_limit_hit")`
+#[derive(Clone)]
+#[contracttype]
+pub struct EventRateLimitHit {
+    pub contributor: Address,
+    /// Amount the contributor attempted to add.
+    pub attempted: i128,
+    /// Amount already counted toward the contributor's current window.
+    pub period_amount: i128,
+    /// Configured maximum for the window.
+    pub max_amount: i128,
+}
+
+/// Emitted when a campaign's visibility level is changed.
+///
+/// Event topic: `("campaign", "visibility_changed")`
+#[derive(Clone)]
+#[contracttype]
+pub struct EventVisibilityChanged {
+    pub old_visibility: Visibility,
+    pub new_visibility: Visibility,
 }
 
 /// Emitted when an emergency withdrawal is initiated.
@@ -599,4 +781,745 @@ pub struct EventInsuranceEnabled {
 pub struct EventInsurancePayout {
     pub contributor: Address,
     pub amount: i128,
+}
+
+/// Emitted when emergency withdrawal multi-sig is configured.
+///
+/// Event topic: `("campaign", "multisig_configured")`
+#[derive(Clone)]
+#[contracttype]
+pub struct EventMultiSigConfigured {
+    /// Minimum number of approvals required to execute the emergency withdrawal
+    pub required_approvals: u32,
+    /// Total number of authorised approver addresses
+    pub approver_count: u32,
+}
+
+/// Emitted when an emergency withdrawal approval is submitted by an approver.
+///
+/// Event topic: `("campaign", "emergency_approved")`
+#[derive(Clone)]
+#[contracttype]
+pub struct EventEmergencyApproved {
+    /// Address of the approver who submitted this approval
+    pub approver: Address,
+    /// Running approval count for the current session after this approval
+    pub approval_count: u32,
+}
+
+/// Emitted when a contribution matching pool is configured.
+///
+/// Event topic: `("campaign", "matching_setup")`
+#[derive(Clone)]
+#[contracttype]
+pub struct EventMatchingSetup {
+    /// Sponsor address funding the matching pool
+    pub sponsor: Address,
+    /// Match ratio in basis points (e.g. 10 000 = 1 : 1)
+    pub match_ratio: u32,
+    /// Maximum total matching amount in stroops
+    pub max_match: i128,
+}
+
+/// Emitted when a campaign is initialised via a template.
+///
+/// Event topic: `("campaign", "template_applied")`
+#[derive(Clone)]
+#[contracttype]
+pub struct EventTemplateApplied {
+    /// Template type used to initialise the campaign
+    pub template_type: TemplateType,
+    /// Minimum contribution derived from the template
+    pub suggested_min: i128,
+}
+
+/// Emitted when the campaign category is updated by the creator.
+///
+/// Event topic: `("campaign", "category_updated")`
+#[derive(Clone)]
+#[contracttype]
+pub struct EventCategoryUpdated {
+    /// Previous category before the update
+    pub old_category: Category,
+    /// New category after the update
+    pub new_category: Category,
+}
+
+/// Emitted when the campaign is paused.
+///
+/// Event topic: `("campaign", "paused")`
+#[derive(Clone)]
+#[contracttype]
+pub struct EventPaused {
+    pub timestamp: u64,
+}
+
+/// Emitted when the campaign is resumed.
+///
+/// Event topic: `("campaign", "resumed")`
+#[derive(Clone)]
+#[contracttype]
+pub struct EventResumed {
+    pub timestamp: u64,
+}
+
+/// Emitted when a campaign is cancelled.
+///
+/// Event topic: `("campaign", "cancelled")`
+#[derive(Clone)]
+#[contracttype]
+pub struct EventCancelled {
+    pub creator: Address,
+    pub total_raised: i128,
+}
+
+/// Emitted after a batch refund completes.
+///
+/// Event topic: `("campaign", "batch_refund_completed")`
+#[derive(Clone)]
+#[contracttype]
+pub struct EventBatchRefundCompleted {
+    pub total_refunded: u32,
+    pub batch_size: u32,
+}
+
+/// Emitted when a contributor is assigned a reward tier.
+///
+/// Event topic: `("campaign", "tier_assigned")`
+#[derive(Clone)]
+#[contracttype]
+pub struct EventTierAssigned {
+    pub contributor: Address,
+    pub tier_name: String,
+    pub min_amount: i128,
+}
+
+/// Emitted when reward tiers are configured.
+///
+/// Event topic: `("campaign", "tiers_set")`
+#[derive(Clone)]
+#[contracttype]
+pub struct EventTiersSet {
+    pub tier_count: u32,
+}
+
+/// Emitted when a metadata version snapshot is stored.
+///
+/// Event topic: `("campaign", "metadata_versioned")`
+#[derive(Clone)]
+#[contracttype]
+pub struct EventMetadataVersioned {
+    pub version: u32,
+    pub timestamp: u64,
+}
+
+/// A versioned snapshot of campaign metadata.
+#[derive(Clone)]
+#[contracttype]
+pub struct MetadataVersion {
+    pub version: u32,
+    pub title: String,
+    pub description: String,
+    pub timestamp: u64,
+}
+
+/// Campaign performance metrics for tracking success rates and indicators.
+///
+/// Contains aggregated performance data including success rate, contribution velocity,
+/// trending information, and milestone achievement tracking.
+#[derive(Clone)]
+#[contracttype]
+pub struct PerformanceMetrics {
+    /// Success rate as basis points (0-10000, where 10000 = 100%)
+    /// Calculated as (total_raised / goal) * 10000, capped at 10000
+    pub success_rate_bps: u32,
+    /// Contribution velocity in stroops per day
+    /// Calculated based on recent contribution activity
+    pub contribution_velocity: i128,
+    /// Trending direction: positive = increasing, negative = decreasing, zero = stable
+    /// Calculated by comparing recent contributions to earlier ones
+    pub trending: i32,
+    /// Number of milestones reached
+    pub milestones_reached: u32,
+    /// Total number of milestones configured
+    pub total_milestones: u32,
+    /// Time elapsed since campaign start in seconds
+    pub time_elapsed: u64,
+    /// Estimated time to reach goal in seconds (0 if goal already reached or unreachable)
+    pub estimated_time_to_goal: u64,
+    /// Average daily contribution amount in stroops
+    pub average_daily_contribution: i128,
+}
+
+/// Emitted when the campaign goal is adjusted.
+///
+/// Event topic: `("campaign", "goal_adjusted")`
+#[derive(Clone)]
+#[contracttype]
+pub struct EventGoalAdjusted {
+    pub previous_goal: i128,
+    pub new_goal: i128,
+    pub timestamp: u64,
+}
+
+/// Emitted when a contribution is recorded with full detail.
+///
+/// Event topic: `("campaign", "contribution_recorded")`
+#[derive(Clone)]
+#[contracttype]
+pub struct EventContributionRecorded {
+    pub contributor: Address,
+    pub amount: i128,
+    pub timestamp: u64,
+    pub running_total: i128,
+}
+
+/// Emitted when a campaign is archived.
+///
+/// Event topic: `("campaign", "archived")`
+#[derive(Clone)]
+#[contracttype]
+pub struct EventArchived {
+    pub creator: Address,
+    pub total_raised: i128,
+    pub timestamp: u64,
+}
+
+/// Emitted when campaign ownership is transferred to a new address.
+///
+/// Event topic: `("campaign", "ownership_transferred")`
+#[derive(Clone)]
+#[contracttype]
+pub struct EventOwnershipTransferred {
+    pub previous_owner: Address,
+    pub new_owner: Address,
+}
+
+// ── Issue #436: Campaign Milestones ───────────────────────────────────────────
+
+/// Verification status for milestone completion.
+#[derive(Clone, Copy, PartialEq, Debug)]
+#[contracttype]
+pub enum MilestoneStatus {
+    /// Milestone not yet reached
+    Pending,
+    /// Milestone reached and verified
+    Verified,
+    /// Milestone reached but not yet verified
+    Unverified,
+}
+
+/// Emitted when a milestone is reached.
+///
+/// Event topic: `("campaign", "milestone_reached")`
+#[derive(Clone)]
+#[contracttype]
+pub struct EventMilestoneReached {
+    pub milestone_index: u32,
+    pub amount: i128,
+    pub timestamp: u64,
+}
+
+/// Emitted when a milestone is verified.
+///
+/// Event topic: `("campaign", "milestone_verified")`
+#[derive(Clone)]
+#[contracttype]
+pub struct EventMilestoneVerified {
+    pub milestone_index: u32,
+    pub timestamp: u64,
+}
+
+/// Emitted when funds are released based on milestone completion.
+///
+/// Event topic: `("campaign", "milestone_release")`
+#[derive(Clone)]
+#[contracttype]
+pub struct EventMilestoneRelease {
+    pub milestone_index: u32,
+    pub amount: i128,
+    pub timestamp: u64,
+}
+
+// ── Issue #437: Contribution Verification (KYC/AML) ──────────────────────────
+
+/// Verification status for KYC/AML compliance.
+#[derive(Clone, Copy, PartialEq, Debug)]
+#[contracttype]
+pub enum VerificationStatus {
+    /// Not yet verified
+    Unverified,
+    /// Verification pending
+    Pending,
+    /// Verification approved
+    Approved,
+    /// Verification rejected
+    Rejected,
+}
+
+/// Emitted when a contributor's verification status is updated.
+///
+/// Event topic: `("campaign", "verification_updated")`
+#[derive(Clone)]
+#[contracttype]
+pub struct EventVerificationUpdated {
+    pub contributor: Address,
+    pub status: VerificationStatus,
+    pub timestamp: u64,
+}
+
+// ── Issue #438: Campaign Analytics ────────────────────────────────────────────
+
+/// Time-series data point for analytics tracking.
+#[derive(Clone)]
+#[contracttype]
+pub struct AnalyticsDataPoint {
+    /// Timestamp of the data point
+    pub timestamp: u64,
+    /// Total raised at this point
+    pub total_raised: i128,
+    /// Number of contributors at this point
+    pub contributor_count: u32,
+    /// Average contribution at this point
+    pub average_contribution: i128,
+}
+
+/// Campaign analytics with contribution patterns and metrics.
+#[derive(Clone)]
+#[contracttype]
+pub struct CampaignAnalytics {
+    /// Total contributions tracked
+    pub total_contributions: u32,
+    /// Average contribution amount
+    pub average_contribution: i128,
+    /// Median contribution amount
+    pub median_contribution: i128,
+    /// Standard deviation of contributions
+    pub std_deviation: i128,
+    /// Peak contribution amount
+    pub peak_contribution: i128,
+    /// Lowest contribution amount
+    pub lowest_contribution: i128,
+    /// Contribution velocity (per day)
+    pub contribution_velocity: i128,
+    /// Number of data points in time series
+    pub data_points_count: u32,
+}
+
+/// Emitted when analytics are generated.
+///
+/// Event topic: `("campaign", "analytics_generated")`
+#[derive(Clone)]
+#[contracttype]
+pub struct EventAnalyticsGenerated {
+    pub total_contributions: u32,
+    pub average_contribution: i128,
+    pub peak_contribution: i128,
+    pub timestamp: u64,
+}
+
+// ── Issue #439: Dispute Resolution System ─────────────────────────────────────
+
+/// Dispute status enumeration.
+#[derive(Clone, Copy, PartialEq, Debug)]
+#[contracttype]
+pub enum DisputeStatus {
+    /// Dispute filed and pending review
+    Filed,
+    /// Dispute under investigation
+    InReview,
+    /// Dispute resolved in favor of filer
+    ResolvedInFavor,
+    /// Dispute resolved against filer
+    ResolvedAgainst,
+    /// Dispute dismissed
+    Dismissed,
+}
+
+/// Dispute record for campaign issues.
+#[derive(Clone)]
+#[contracttype]
+pub struct Dispute {
+    /// Unique dispute ID
+    pub id: u32,
+    /// Address that filed the dispute
+    pub filer: Address,
+    /// Dispute description
+    pub description: String,
+    /// Current dispute status
+    pub status: DisputeStatus,
+    /// Timestamp when dispute was filed
+    pub filed_at: u64,
+    /// Timestamp when dispute was resolved (0 if unresolved)
+    pub resolved_at: u64,
+    /// Total votes in favor of filer
+    pub votes_for: i128,
+    /// Total votes against filer
+    pub votes_against: i128,
+}
+
+/// Emitted when a dispute is filed.
+///
+/// Event topic: `("campaign", "dispute_filed")`
+#[derive(Clone)]
+#[contracttype]
+pub struct EventDisputeFiled {
+    pub dispute_id: u32,
+    pub filer: Address,
+    pub timestamp: u64,
+}
+
+/// Emitted when a vote is cast on a dispute.
+///
+/// Event topic: `("campaign", "dispute_voted")`
+#[derive(Clone)]
+#[contracttype]
+pub struct EventDisputeVoted {
+    pub dispute_id: u32,
+    pub voter: Address,
+    pub vote_weight: i128,
+    pub in_favor: bool,
+    pub timestamp: u64,
+}
+
+/// Emitted when a dispute is resolved.
+///
+/// Event topic: `("campaign", "dispute_resolved")`
+#[derive(Clone)]
+#[contracttype]
+pub struct EventDisputeResolved {
+    pub dispute_id: u32,
+    pub status: DisputeStatus,
+    pub votes_for: i128,
+    pub votes_against: i128,
+    pub timestamp: u64,
+}
+
+// ── Issue #457: Contract Versioning ──────────────────────────────────────────
+
+/// Records a contract version migration.
+#[derive(Clone)]
+#[contracttype]
+pub struct VersionMigration {
+    /// Version migrated from
+    pub from_version: u32,
+    /// Version migrated to
+    pub to_version: u32,
+    /// Timestamp of migration
+    pub timestamp: u64,
+}
+
+/// Emitted when the contract version is checked.
+///
+/// Event topic: `("contract", "version_checked")`
+#[derive(Clone)]
+#[contracttype]
+pub struct EventVersionChecked {
+    pub current_version: u32,
+    pub expected_version: u32,
+    pub compatible: bool,
+}
+
+/// Emitted when a contract migration is executed.
+///
+/// Event topic: `("contract", "migrated")`
+#[derive(Clone)]
+#[contracttype]
+pub struct EventContractMigrated {
+    pub from_version: u32,
+    pub to_version: u32,
+    pub timestamp: u64,
+}
+
+// ── Issue #458: State Validation ──────────────────────────────────────────────
+
+/// Result of a full state invariant check.
+#[derive(Clone)]
+#[contracttype]
+pub struct StateValidationResult {
+    /// Whether all invariants passed
+    pub valid: bool,
+    /// Number of invariants checked
+    pub checks_passed: u32,
+    /// Number of invariants that failed
+    pub checks_failed: u32,
+    /// Timestamp of the validation
+    pub timestamp: u64,
+}
+
+/// Emitted when state validation is run.
+///
+/// Event topic: `("contract", "state_validated")`
+#[derive(Clone)]
+#[contracttype]
+pub struct EventStateValidated {
+    pub valid: bool,
+    pub checks_passed: u32,
+    pub checks_failed: u32,
+    pub timestamp: u64,
+}
+
+/// Emitted when a state invariant violation is detected.
+///
+/// Event topic: `("contract", "invariant_violated")`
+#[derive(Clone)]
+#[contracttype]
+pub struct EventInvariantViolated {
+    pub invariant_id: u32,
+    pub timestamp: u64,
+}
+
+// ── Issue #459: Debugging Utilities ──────────────────────────────────────────
+
+/// A snapshot of the full contract state for debugging.
+#[derive(Clone)]
+#[contracttype]
+pub struct ContractStateSnapshot {
+    /// Current contract version
+    pub version: u32,
+    /// Current campaign status
+    pub status: Status,
+    /// Total raised
+    pub total_raised: i128,
+    /// Campaign goal
+    pub goal: i128,
+    /// Number of contributors
+    pub contributor_count: u32,
+    /// Campaign deadline
+    pub deadline: u64,
+    /// Snapshot timestamp
+    pub timestamp: u64,
+}
+
+/// Emitted when a debug state snapshot is taken.
+///
+/// Event topic: `("debug", "snapshot")`
+#[derive(Clone)]
+#[contracttype]
+pub struct EventDebugSnapshot {
+    pub version: u32,
+    pub status: Status,
+    pub total_raised: i128,
+    pub contributor_count: u32,
+    pub timestamp: u64,
+}
+
+/// Emitted for a debug log entry.
+///
+/// Event topic: `("debug", "log")`
+#[derive(Clone)]
+#[contracttype]
+pub struct EventDebugLog {
+    pub message: String,
+    pub timestamp: u64,
+}
+
+// ── Issue #460: Performance Monitoring ───────────────────────────────────────
+
+/// Records execution time for a contract function.
+#[derive(Clone)]
+#[contracttype]
+pub struct ExecutionRecord {
+    /// Name/identifier of the function
+    pub function_name: String,
+    /// Ledger timestamp when the call was recorded
+    pub timestamp: u64,
+    /// Execution duration in ledger time units (approximated)
+    pub duration_ms: u64,
+}
+
+/// Aggregated performance stats for a function.
+#[derive(Clone)]
+#[contracttype]
+pub struct FunctionPerfStats {
+    /// Total number of calls recorded
+    pub call_count: u32,
+    /// Cumulative duration across all calls
+    pub total_duration_ms: u64,
+    /// Maximum single-call duration observed
+    pub max_duration_ms: u64,
+}
+
+/// Emitted when a function execution time is recorded.
+///
+/// Event topic: `("perf", "execution_recorded")`
+#[derive(Clone)]
+#[contracttype]
+pub struct EventExecutionRecorded {
+    pub function_name: String,
+    pub duration_ms: u64,
+    pub timestamp: u64,
+}
+
+/// Emitted when a performance alert threshold is breached.
+///
+/// Event topic: `("perf", "alert")`
+#[derive(Clone)]
+#[contracttype]
+pub struct EventPerfAlert {
+    pub function_name: String,
+    pub duration_ms: u64,
+    pub threshold_ms: u64,
+    pub timestamp: u64,
+}
+
+// ── DeFi: Yield Generation ────────────────────────────────────────────────────
+
+/// Yield configuration set by the campaign creator.
+///
+/// The creator deposits a pool of `reward_token` into the contract.
+/// Contributors earn yield proportional to their share of total contributions,
+/// accrued linearly over the campaign duration.
+#[derive(Clone)]
+#[contracttype]
+pub struct YieldConfig {
+    /// Token used to pay out yield (may be the same as the campaign token or different)
+    pub reward_token: Address,
+    /// Total reward pool deposited by the creator (in reward token's smallest unit)
+    pub pool: i128,
+    /// Annual yield rate in basis points (e.g. 500 = 5% APY)
+    pub rate_bps: u32,
+    /// Timestamp when yield accrual started (set to campaign start time)
+    pub start_time: u64,
+}
+
+/// Per-contributor yield accounting snapshot.
+#[derive(Clone)]
+#[contracttype]
+pub struct YieldInfo {
+    /// Yield already claimed by this contributor (in reward token units)
+    pub claimed: i128,
+    /// Snapshot of the yield-per-share accumulator at last claim/update
+    pub reward_debt: i128,
+}
+
+/// Emitted when yield is configured by the creator.
+///
+/// Event topic: `("defi", "yield_configured")`
+#[derive(Clone)]
+#[contracttype]
+pub struct EventYieldConfigured {
+    pub reward_token: Address,
+    pub pool: i128,
+    pub rate_bps: u32,
+}
+
+/// Emitted when a contributor claims their accrued yield.
+///
+/// Event topic: `("defi", "yield_claimed")`
+#[derive(Clone)]
+#[contracttype]
+pub struct EventYieldClaimed {
+    pub contributor: Address,
+    pub amount: i128,
+}
+
+// ── Governance Events (Multi-Sig) ────────────────────────────────────────────
+
+/// Emitted when a governance proposal is created.
+///
+/// Event topic: `("governance", "proposed")`
+#[derive(Clone)]
+#[contracttype]
+pub struct EventGovernanceProposed {
+    pub nonce: u32,
+    pub proposer: soroban_sdk::Address,
+    pub platform_address: soroban_sdk::Address,
+    pub platform_fee_bps: u32,
+    pub voting_ends_at: u64,
+}
+
+/// Emitted when a governance vote is cast.
+///
+/// Event topic: `("governance", "voted")`
+#[derive(Clone)]
+#[contracttype]
+pub struct EventGovernanceVoted {
+    pub nonce: u32,
+    pub governor: soroban_sdk::Address,
+    pub approvals: u32,
+    pub required: u32,
+}
+
+/// Emitted when a governance proposal is executed after timelock.
+///
+/// Event topic: `("governance", "executed")`
+#[derive(Clone)]
+#[contracttype]
+pub struct EventGovernanceExecuted {
+    pub nonce: u32,
+    pub platform_address: soroban_sdk::Address,
+    pub platform_fee_bps: u32,
+}
+
+/// Emitted when governance configuration is updated.
+///
+/// Event topic: `("governance", "config_updated")`
+#[derive(Clone)]
+#[contracttype]
+pub struct EventGovernanceConfigUpdated {
+    pub required_approvals: u32,
+    pub governor_count: u32,
+    pub timelock_delay: u64,
+}
+
+/// Emitted when the contract is emergency paused by governance.
+///
+/// Event topic: `("governance", "emergency_paused")`
+#[derive(Clone)]
+#[contracttype]
+pub struct EventGovernanceEmergencyPaused {
+    pub timestamp: u64,
+}
+
+/// Emitted when the contract is resumed from emergency pause by governance.
+///
+/// Event topic: `("governance", "emergency_resumed")`
+#[derive(Clone)]
+#[contracttype]
+pub struct EventGovernanceEmergencyResumed {
+    pub timestamp: u64,
+}
+
+// ── Issue #634: Quadratic-Funding Hooks ──────────────────────────────────────
+
+/// Per-contributor data used for off-chain quadratic-funding distribution.
+///
+/// `sqrt(contribution)` is computed off-chain; the contract exposes the raw
+/// inputs so any QF calculator can work with them without trusted intermediaries.
+#[derive(Clone)]
+#[contracttype]
+pub struct QfContributorInput {
+    /// Contributor address
+    pub contributor: Address,
+    /// Cumulative amount contributed by this address (in stroops)
+    pub amount: i128,
+}
+
+/// Aggregate QF inputs for the whole campaign.
+///
+/// Returned by `get_qf_inputs()`.
+#[derive(Clone)]
+#[contracttype]
+pub struct QfInputs {
+    /// Total number of unique contributors
+    pub contributor_count: u32,
+    /// Per-contributor amounts; ordered by first-contribution time
+    pub contributors: soroban_sdk::Vec<QfContributorInput>,
+}
+
+/// Emitted on every contribution with the per-contributor weighting inputs.
+///
+/// Event topic: `("campaign", "qf_contribution")`
+#[derive(Clone)]
+#[contracttype]
+pub struct EventQfContribution {
+    /// Contributor address
+    pub contributor: Address,
+    /// Incremental amount added in this contribution (in stroops)
+    pub amount: i128,
+    /// Contributor's cumulative total after this contribution (in stroops)
+    pub cumulative: i128,
+    /// Distinct-contributor count after this contribution
+    pub contributor_count: u32,
 }

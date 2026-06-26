@@ -1,0 +1,28 @@
+# Fund-My-Cause API Reference
+
+> **Contract version:** 4 · **Network:** Stellar / Soroban · [Rustdoc](https://fund-my-cause.github.io/Fund-My-Cause/crowdfund/)
+
+This directory contains the full API surface of both on-chain contracts.
+
+| Document | Contents |
+|----------|----------|
+| [crowdfund.md](./crowdfund.md) | Every public function on the crowdfund contract |
+| [registry.md](./registry.md) | Campaign discovery registry contract |
+| [events.md](./events.md) | Complete event reference with payloads |
+| [errors.md](./errors.md) | All `ContractError` codes with remediation |
+| [types.md](./types.md) | Every `#[contracttype]` struct and enum |
+
+## Quick links
+
+- [Getting started →](../tutorials/getting-started.md)
+- [JavaScript SDK →](../../sdks/js/README.md)
+- [Live playground →](../../playground/README.md)
+- [Integration examples →](../../examples/README.md)
+
+## Conventions
+
+**Amounts** — all token amounts are in *stroops* (1 XLM = 10 000 000 stroops) unless otherwise noted.
+
+**Auth** — functions that mutate state require the caller identified by the first `Address` argument to sign the transaction. Read-only functions (`view`) do not require auth.
+
+**Errors** — all mutable functions return `Result<_, ContractError>`. See [errors.md](./errors.md) for the full table.

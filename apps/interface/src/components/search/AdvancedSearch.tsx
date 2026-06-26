@@ -1,0 +1,492 @@
+"use client";
+
+import { useState, useEffect } from "react";
+import { Search, X, SlidersHorizontal, Sparkles } from "lucide-react";
+import { CATEGORY_TAXONOMY } from "@/lib/categories";
+import { SearchSuggestions } from "@/components/ui/SearchSuggestions";
+import { SavedSearchManager } from "@/components/search/SavedSearchManager";
+import type { SearchFilters } from "@/services/search.service";
+import type { SearchSuggestion } from "@/hooks/useSearchSuggestions";
+import type { SavedSearch } from "@/services/savedSearch.service";
+
+// ── Types ─────────────────────────────────────────────────────────────────────
+
+interface Props {
+  inputValue: string;
+  onInputChange: (value: string) => void;
+  filters: SearchFilters;
+  onFilterChange: (key: string, value: string) => void;
+  onApplyAdvanced: (values: {
+    goalMin: string;
+    goalMax: string;
+    dateFrom: string;
+    dateTo: string;
+  }) => void;
+  onClearAdvanced: () => void;
+  onClearAll: () => void;
+  suggestions: Array<{ id: string; title: string; category?: string }>;
+  showAdvanced: boolean;
+  onToggleAdvanced: () => void;
+  hasActiveFilters: boolean;
+  recentSearches?: string[];
+  /** Called when user wants to clear only the search query */
+  onClearSearch: () => void;
+  /** Saved searches for the current wallet. */
+  savedSearches?: SavedSearch[];
+  /** Persist the current filters under a name. */
+  onSaveSearch?: (name: string) => void;
+  /** Restore a saved search's filters. */
+  onRestoreSearch?: (filters: SearchFilters) => void;
+  /** Delete a saved search. */
+  onDeleteSearch?: (id: string) => void;
+  /** Rename a saved search. */
+  onRenameSearch?: (id: string, name: string) => void;
+}
+
+// ── Constants ─────────────────────────────────────────────────────────────────
+
+const SORT_OPTIONS = [
+  { label: "Newest", value: "recent" },
+  { label: "Relevance", value: "relevance" },
+  { label: "Most Funded", value: "most-funded" },
+  { label: "Ending Soon", value: "ending-soon" },
+  { label: "Trending", value: "trending" },
+];
+
+const FILTER_TABS = [
+  { label: "All", value: "all" },
+  { label: "Active", value: "active" },
+  { label: "Funded", value: "funded" },
+  { label: "Ended", value: "ended" },
+];
+
+const selectCls =
+  "bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-xl px-3 py-2 text-sm text-gray-900 dark:text-white focus:outline-none focus:border-indigo-500";
+
+const inputCls =
+  "w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-indigo-500";
+
+// ── Component ─────────────────────────────────────────────────────────────────
+
+export function AdvancedSearch({
+  inputValue,
+  onInputChange,
+  filters,
+  onFilterChange,
+  onApplyAdvanced,
+  onClearAdvanced,
+  onClearAll,
+  onClearSearch,
+  suggestions,
+  showAdvanced,
+  onToggleAdvanced,
+  hasActiveFilters,
+  recentSearches = [],
+  savedSearches = [],
+  onSaveSearch,
+  onRestoreSearch,
+  onDeleteSearch,
+  onRenameSearch,
+}: Props) {
+  const [activeIndex, setActiveIndex] = useState(-1);
+  const [dropdownOpen, setDropdownOpen] = useState(false);
+  const [showMobileFilters, setShowMobileFilters] = useState(false);
+
+  // Local controlled state for advanced filter inputs (applied on "Apply")
+  const [goalMin, setGoalMin] = useState(
+    filters.goalMin !== undefined ? String(filters.goalMin) : "",
+  );
+  const [goalMax, setGoalMax] = useState(
+    filters.goalMax !== undefined ? String(filters.goalMax) : "",
+  );
+  const [dateFrom, setDateFrom] = useState(filters.dateFrom ?? "");
+  const [dateTo, setDateTo] = useState(filters.dateTo ?? "");
+
+  // Keep local advanced inputs in sync when URL changes externally
+  useEffect(() => {
+    setGoalMin(filters.goalMin !== undefined ? String(filters.goalMin) : "");
+    setGoalMax(filters.goalMax !== undefined ? String(filters.goalMax) : "");
+    setDateFrom(filters.dateFrom ?? "");
+    setDateTo(filters.dateTo ?? "");
+  }, [filters.goalMin, filters.goalMax, filters.dateFrom, filters.dateTo]);
+
+  const hasQuery = inputValue.trim().length > 0;
+  const hasAdvancedFilters = !!(
+    filters.goalMin !== undefined ||
+    filters.goalMax !== undefined ||
+    filters.dateFrom ||
+    filters.dateTo
+  );
+  const currentStatus = filters.status ?? "all";
+
+  function handleSuggestionSelect(s: SearchSuggestion) {
+    onInputChange(s.title);
+    setDropdownOpen(false);
+    setActiveIndex(-1);
+  }
+
+  function handleApply() {
+    onApplyAdvanced({ goalMin, goalMax, dateFrom, dateTo });
+    onToggleAdvanced();
+  }
+
+  function handleClearAdvanced() {
+    setGoalMin("");
+    setGoalMax("");
+    setDateFrom("");
+    setDateTo("");
+    onClearAdvanced();
+  }
+
+  return (
+    <div className="space-y-4">
+      {/* ── Search bar row ───────────────────────────────────────────────── */}
+      <div className="flex flex-col sm:flex-row gap-3">
+        {/* Search input */}
+        <div className="relative flex-1">
+          <Search
+            size={16}
+            className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"
+          />
+          <input
+            type="text"
+            placeholder="Search campaigns..."
+            value={inputValue}
+            onChange={(e) => {
+              onInputChange(e.target.value);
+              setActiveIndex(-1);
+              setDropdownOpen(true);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "ArrowDown") {
+                e.preventDefault();
+                setActiveIndex((i) => Math.min(i + 1, suggestions.length - 1));
+              } else if (e.key === "ArrowUp") {
+                e.preventDefault();
+                setActiveIndex((i) => Math.max(i - 1, -1));
+              } else if (e.key === "Enter" && activeIndex >= 0) {
+                e.preventDefault();
+                const s = suggestions[activeIndex];
+                if (s) handleSuggestionSelect(s);
+              } else if (e.key === "Escape") {
+                setDropdownOpen(false);
+              }
+            }}
+            onFocus={() => {
+              if (suggestions.length > 0) setDropdownOpen(true);
+            }}
+            aria-label="Search campaigns"
+            aria-autocomplete="list"
+            aria-expanded={dropdownOpen && suggestions.length > 0}
+            aria-haspopup="listbox"
+            className="w-full bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-xl pl-9 pr-10 py-2 text-sm text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:border-indigo-500"
+          />
+
+          {/* X icon button for quick clear */}
+          {hasQuery && (
+            <button
+              onClick={() => {
+                onClearSearch();
+                setDropdownOpen(false);
+              }}
+              aria-label="Clear search input"
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-200 transition"
+            >
+              <X size={14} />
+            </button>
+          )}
+
+          <SearchSuggestions
+            suggestions={suggestions}
+            isOpen={dropdownOpen && suggestions.length > 0}
+            onSelect={handleSuggestionSelect}
+            onClose={() => setDropdownOpen(false)}
+            activeIndex={activeIndex}
+            onActiveIndexChange={setActiveIndex}
+          />
+        </div>
+
+        {/* Sort selector */}
+        <select
+          value={filters.sort ?? "recent"}
+          onChange={(e) => onFilterChange("sort", e.target.value)}
+          aria-label="Sort campaigns"
+          className={selectCls}
+        >
+          {SORT_OPTIONS.map((opt) => (
+            <option key={opt.value} value={opt.value}>
+              {opt.label}
+            </option>
+          ))}
+        </select>
+
+        {/* Mobile filters toggle */}
+        <button
+          onClick={() => setShowMobileFilters((v) => !v)}
+          className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-medium transition bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:border-indigo-500 sm:hidden"
+        >
+          <SlidersHorizontal size={14} />
+          Filters &amp; Sort
+        </button>
+
+        {/* Advanced filters toggle */}
+        <button
+          onClick={onToggleAdvanced}
+          aria-expanded={showAdvanced}
+          className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-medium transition border hidden sm:flex ${
+            hasAdvancedFilters
+              ? "bg-indigo-600 border-indigo-500 text-white"
+              : "bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:border-indigo-500"
+          }`}
+        >
+          <SlidersHorizontal size={14} />
+          Filters{hasAdvancedFilters ? " ●" : ""}
+        </button>
+
+        {/* Clear search (text button, visible when query is active) */}
+        {hasQuery && (
+          <button
+            onClick={onClearSearch}
+            className="text-sm text-indigo-600 dark:text-indigo-400 hover:text-indigo-500 transition"
+          >
+            Clear search
+          </button>
+        )}
+
+        {/* Clear all (visible when non-search filters are active without a query) */}
+        {!hasQuery && hasActiveFilters && (
+          <button
+            onClick={onClearAll}
+            className="text-sm text-indigo-600 dark:text-indigo-400 hover:text-indigo-500 transition"
+          >
+            Clear all
+          </button>
+        )}
+      </div>
+
+      {/* ── Recent searches ───────────────────────────────────────────────── */}
+      {!hasQuery && recentSearches.length > 0 && (
+        <div className="flex flex-wrap gap-2 items-center">
+          <span className="text-xs text-gray-500">Recent:</span>
+          {recentSearches.slice(0, 5).map((q) => (
+            <button
+              key={q}
+              onClick={() => onInputChange(q)}
+              className="px-2.5 py-1 rounded-lg text-xs bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition"
+            >
+              {q}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* ── Mobile filters panel ──────────────────────────────────────────── */}
+      {showMobileFilters && (
+        <div className="rounded-2xl border border-gray-700 bg-gray-900 p-5 space-y-4 sm:hidden">
+          <h3 className="text-sm font-semibold text-gray-300">Filter by Status</h3>
+          <div className="flex flex-col gap-2">
+            {FILTER_TABS.map((tab) => (
+              <button
+                key={tab.value}
+                onClick={() => {
+                  onFilterChange("filter", tab.value);
+                  setShowMobileFilters(false);
+                }}
+                className={`w-full text-left rounded-xl px-4 py-3 text-sm font-medium transition ${
+                  currentStatus === tab.value
+                    ? "bg-indigo-600 text-white"
+                    : "bg-gray-800 text-gray-200 hover:bg-gray-700"
+                }`}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ── Advanced filter panel ─────────────────────────────────────────── */}
+      {showAdvanced && (
+        <div className="rounded-2xl border border-gray-700 bg-gray-900 p-5 space-y-4">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-semibold text-gray-300">
+              Advanced Filters
+            </h3>
+            <span className="flex items-center gap-1 text-xs text-indigo-400">
+              <Sparkles size={12} />
+              Semantic search active
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="mb-1 block text-xs text-gray-400">
+                Min Goal (XLM)
+              </label>
+              <input
+                type="number"
+                min={0}
+                value={goalMin}
+                onChange={(e) => setGoalMin(e.target.value)}
+                placeholder="e.g. 1000"
+                className={inputCls}
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs text-gray-400">
+                Max Goal (XLM)
+              </label>
+              <input
+                type="number"
+                min={0}
+                value={goalMax}
+                onChange={(e) => setGoalMax(e.target.value)}
+                placeholder="e.g. 50000"
+                className={inputCls}
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs text-gray-400">
+                Deadline From
+              </label>
+              <input
+                type="date"
+                value={dateFrom}
+                onChange={(e) => setDateFrom(e.target.value)}
+                className={inputCls}
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs text-gray-400">
+                Deadline To
+              </label>
+              <input
+                type="date"
+                value={dateTo}
+                onChange={(e) => setDateTo(e.target.value)}
+                className={inputCls}
+              />
+            </div>
+          </div>
+
+          <div className="flex gap-2 justify-end">
+            <button
+              onClick={handleClearAdvanced}
+              className="flex items-center gap-1 px-3 py-1.5 text-xs text-gray-400 hover:text-white transition"
+            >
+              <X size={12} /> Clear
+            </button>
+            <button
+              onClick={handleApply}
+              className="px-4 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-sm font-medium text-white transition"
+            >
+              Apply
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── Saved searches panel ─────────────────────────────────────────── */}
+      {onSaveSearch && (
+        <div className="rounded-2xl border border-gray-700 bg-gray-900 p-4">
+          <h3 className="mb-3 text-sm font-semibold text-gray-300">Saved Searches</h3>
+          <SavedSearchManager
+            savedSearches={savedSearches}
+            onRestore={onRestoreSearch ?? (() => {})}
+            onDelete={onDeleteSearch ?? (() => {})}
+            onRename={onRenameSearch ?? (() => {})}
+            onSaveCurrent={onSaveSearch}
+            hasActiveFilters={hasActiveFilters}
+          />
+        </div>
+      )}
+
+      {/* ── Category pills ────────────────────────────────────────────────── */}
+      <div
+        className="flex flex-wrap gap-2"
+        role="group"
+        aria-label="Filter by category"
+      >
+        <button
+          onClick={() => onFilterChange("category", "")}
+          className={`px-3 py-1 rounded-full text-sm font-medium transition ${
+            !filters.category
+              ? "bg-indigo-600 text-white"
+              : "bg-gray-200 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white"
+          }`}
+        >
+          All
+        </button>
+        {CATEGORY_TAXONOMY.map((cat) => (
+          <button
+            key={cat.slug}
+            onClick={() =>
+              onFilterChange(
+                "category",
+                filters.category === cat.slug ? "" : cat.slug,
+              )
+            }
+            className={`px-3 py-1 rounded-full text-sm font-medium transition ${
+              filters.category === cat.slug
+                ? "bg-indigo-600 text-white"
+                : "bg-gray-200 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white"
+            }`}
+          >
+            {cat.emoji} {cat.label}
+          </button>
+        ))}
+      </div>
+
+      {/* ── Status tabs ───────────────────────────────────────────────────── */}
+      <div
+        className="flex flex-wrap gap-2"
+        role="tablist"
+        aria-label="Filter by status"
+      >
+        {FILTER_TABS.map((tab, idx) => {
+          const isSelected =
+            currentStatus === tab.value ||
+            (!filters.status && tab.value === "all");
+          return (
+            <button
+              key={tab.value}
+              role="tab"
+              aria-selected={isSelected}
+              tabIndex={isSelected ? 0 : -1}
+              onClick={() => onFilterChange("filter", tab.value)}
+              onKeyDown={(e) => {
+                if (e.key === "ArrowRight") {
+                  const next = FILTER_TABS[(idx + 1) % FILTER_TABS.length];
+                  onFilterChange("filter", next.value);
+                  (
+                    e.currentTarget.parentElement?.children[
+                      (idx + 1) % FILTER_TABS.length
+                    ] as HTMLElement
+                  )?.focus();
+                } else if (e.key === "ArrowLeft") {
+                  const prev =
+                    FILTER_TABS[
+                      (idx - 1 + FILTER_TABS.length) % FILTER_TABS.length
+                    ];
+                  onFilterChange("filter", prev.value);
+                  (
+                    e.currentTarget.parentElement?.children[
+                      (idx - 1 + FILTER_TABS.length) % FILTER_TABS.length
+                    ] as HTMLElement
+                  )?.focus();
+                }
+              }}
+              className={`px-4 py-1.5 rounded-full text-sm font-medium transition ${
+                isSelected
+                  ? "bg-indigo-600 text-white"
+                  : "bg-gray-200 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white"
+              }`}
+            >
+              {tab.label}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}

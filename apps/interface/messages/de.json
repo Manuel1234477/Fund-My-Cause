@@ -1,0 +1,181 @@
+{
+  "nav": {
+    "connectWallet": "Wallet verbinden",
+    "disconnect": "Trennen",
+    "notifications": "Benachrichtigungen",
+    "toggleTheme": "Design wechseln",
+    "openMenu": "Menü öffnen",
+    "closeMenu": "Menü schließen",
+    "restoringSession": "Wallet-Sitzung wird wiederhergestellt…",
+    "networkMismatch": "Deine Wallet ist mit {walletNetwork} verbunden, aber diese App verwendet {appNetwork}. Bitte wechsle das Netzwerk in Freighter."
+  },
+  "home": {
+    "badge": "Gebaut auf Stellar · Powered by Soroban",
+    "heroTitle": "Finanziere die Zukunft,\nOn-Chain.",
+    "heroSubtitle": "Erstelle oder unterstütze Kampagnen mit blitzschnellen, vertrauenslosen Transaktionen im Stellar-Netzwerk.",
+    "exploreCampaigns": "Kampagnen entdecken",
+    "startCampaign": "Kampagne starten",
+    "featuredCampaigns": "Empfohlene Kampagnen",
+    "viewAll": "Alle anzeigen",
+    "featured": "Empfohlen",
+    "raised": "{amount} XLM gesammelt",
+    "goal": "Ziel: {amount} XLM",
+    "timeLeft": "Noch {time}",
+    "pledgeNow": "Jetzt unterstützen",
+    "successfullyFunded": "Erfolgreich finanziert",
+    "howItWorks": "So funktioniert es",
+    "stats": {
+      "campaignsLaunched": "Gestartete Kampagnen",
+      "totalRaised": "Gesammt gesammelt",
+      "contributors": "Unterstützer"
+    },
+    "steps": {
+      "createTitle": "Erstellen",
+      "createDesc": "Starte eine On-Chain-Kampagne mit deinem Ziel, Deadline und Token in Minuten.",
+      "fundTitle": "Finanzieren",
+      "fundDesc": "Unterstützer pledgen XLM oder beliebige Stellar-Token vor der Deadline.",
+      "withdrawTitle": "Abheben oder Rückerstattung",
+      "withdrawDesc": "Ziel erreicht? Gelder abheben. Ziel verfehlt? Unterstützer erhalten automatisch eine Rückerstattung."
+    },
+    "footer": {
+      "campaigns": "Kampagnen",
+      "create": "Erstellen",
+      "dashboard": "Dashboard",
+      "bookmarks": "Lesezeichen",
+      "stellarDocs": "Stellar-Docs",
+      "license": "MIT-Lizenz · Gebaut auf Stellar"
+    }
+  },
+  "campaigns": {
+    "title": "Kampagnen",
+    "searchPlaceholder": "Kampagnen suchen...",
+    "sortNewest": "Neueste",
+    "sortMostFunded": "Meistfinanziert",
+    "sortEndingSoon": "Endet bald",
+    "filterAll": "Alle",
+    "filterActive": "Aktiv",
+    "filterFunded": "Finanziert",
+    "filterEnded": "Beendet",
+    "filterLabel": "Kampagnen filtern",
+    "found": "{count} Kampagne gefunden",
+    "foundPlural": "{count} Kampagnen gefunden",
+    "noResults": "Keine Kampagnen gefunden",
+    "noResultsDesc": "Versuche deine Suche oder Filter anzupassen.",
+    "clearFilters": "Filter löschen",
+    "previous": "Zurück",
+    "next": "Weiter",
+    "page": "Seite {current} von {total}",
+    "selected": "{count} ausgewählt",
+    "compare": "Vergleichen",
+    "clear": "Löschen"
+  },
+  "campaignCard": {
+    "funded": "Finanziert",
+    "ended": "Beendet",
+    "raised": "gesammelt",
+    "goal": "Ziel",
+    "compare": "Vergleichen",
+    "video": "Video",
+    "shareCampaign": "Kampagne teilen",
+    "bookmarkCampaign": "Kampagne merken",
+    "removeBookmark": "Lesezeichen entfernen",
+    "pledgeNow": "Jetzt unterstützen",
+    "successfullyFunded": "Erfolgreich finanziert",
+    "campaignEnded": "Kampagne beendet",
+    "pledgeTo": "Pledge für {title}",
+    "fundedAriaLabel": "{title} — erfolgreich finanziert",
+    "endedAriaLabel": "{title} — Kampagne beendet",
+    "pledgeAriaLabel": "Pledge für {title}"
+  },
+  "pledgeModal": {
+    "title": "Pledge für {campaignTitle}",
+    "close": "Pledge-Modal schließen",
+    "unfundedWarning": "⚠️ Dieses Konto ist im Netzwerk nicht finanziert. Deine Transaktion wird fehlschlagen.",
+    "amountLabel": "Betrag in XLM (mindestens {min})",
+    "amountPlaceholder": "Betrag in XLM (min. {min})",
+    "minimumNote": "Minimum: {min} XLM",
+    "confirmPledge": "Pledge bestätigen",
+    "connectWalletToPledge": "Wallet verbinden, um zu pledgen",
+    "confirmPledgeAriaLabel": "Pledge für {campaignTitle} bestätigen",
+    "connectWalletAriaLabel": "Wallet verbinden, um zu pledgen",
+    "validationAmount": "Bitte gib einen gültigen Betrag ein.",
+    "validationMinimum": "Mindestbeitrag ist {min} XLM."
+  },
+  "goalSuccess": {
+    "title": "Ziel erreicht! 🎉",
+    "raisedTotal": "insgesamt gesammelt",
+    "nextSteps": "Nächste Schritte",
+    "step1": "Teile deinen Erfolg mit Unterstützern",
+    "step2": "Gelder in deine Wallet abheben",
+    "step3": "Kampagnenversprechen einhalten",
+    "shareSuccess": "Erfolg teilen",
+    "withdrawFunds": "Gelder abheben",
+    "dismiss": "Schließen",
+    "close": "Schließen"
+  },
+  "cancelCampaign": {
+    "title": "Kampagne abbrechen",
+    "irreversibleWarning": "Diese Aktion ist <strong>unwiderruflich</strong>. Alle Unterstützer können eine vollständige Rückerstattung beantragen.",
+    "reasonLabel": "Abbruchgrund",
+    "reasonPlaceholder": "Gib deinen Grund ein…",
+    "confirmButton": "Kampagne abbrechen",
+    "cancelButton": "Zurück",
+    "validationReason": "Bitte gib einen Abbruchgrund an.",
+    "close": "Schließen"
+  },
+  "campaignDetail": {
+    "copyContractId": "Vertrags-ID kopieren",
+    "copy": "Kopieren",
+    "copied": "Kopiert!",
+    "viewExplorer": "Auf Stellar Expert ansehen",
+    "explorer": "Explorer",
+    "dataUnavailable": "Kampagnendaten sind nicht verfügbar.",
+    "retry": "Erneut versuchen"
+  },
+  "countdown": {
+    "ended": "Kampagne beendet",
+    "left": "Noch {time}",
+    "days": "T",
+    "hours": "Std",
+    "minutes": "Min",
+    "seconds": "Sek",
+    "endedAriaLabel": "Kampagne beendet",
+    "remainingAriaLabel": "{days}T {hours}Std {minutes}Min {seconds}Sek verbleibend"
+  },
+  "bookmarks": {
+    "title": "Meine Lesezeichen",
+    "export": "Exportieren",
+    "import": "Importieren",
+    "empty": "Noch keine Lesezeichen.",
+    "browseCampaigns": "Kampagnen durchsuchen",
+    "deadlineAlert": "{title} endet in {days, plural, =0 {weniger als einem Tag} one {# Tag} other {# Tagen}}!"
+  },
+  "compare": {
+    "title": "Kampagnen vergleichen",
+    "share": "Teilen",
+    "clear": "Löschen",
+    "noSelection": "Keine Kampagnen zum Vergleichen ausgewählt.",
+    "browseCampaigns": "Kampagnen durchsuchen",
+    "selectHint": "Wähle bis zu 4 Kampagnen von der Kampagnenseite zum Vergleichen.",
+    "metric": "Kennzahl",
+    "status": "Status",
+    "raised": "Gesammelt",
+    "goal": "Ziel",
+    "progress": "Fortschritt",
+    "deadline": "Deadline",
+    "contributors": "Unterstützer",
+    "token": "Token",
+    "removeFromComparison": "{title} aus dem Vergleich entfernen",
+    "copiedToClipboard": "Vergleichslink in die Zwischenablage kopiert!"
+  },
+  "notFound": {
+    "title": "404",
+    "message": "Diese Seite existiert nicht.",
+    "goHome": "Zur Startseite"
+  },
+  "common": {
+    "loading": "Lädt…",
+    "error": "Etwas ist schiefgelaufen.",
+    "retry": "Erneut versuchen"
+  }
+}

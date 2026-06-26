@@ -40,6 +40,31 @@ export function filterByDateRange(
   });
 }
 
+/** Filter records by transaction type (status field). Empty string = no filter. */
+export function filterByType(records: ExportRecord[], type: string): ExportRecord[] {
+  if (!type) return records;
+  return records.filter((r) => r.status.toLowerCase() === type.toLowerCase());
+}
+
+/** Filter records by campaign ID. Empty string = no filter. */
+export function filterByCampaign(records: ExportRecord[], campaignId: string): ExportRecord[] {
+  if (!campaignId) return records;
+  return records.filter((r) => r.campaignId === campaignId);
+}
+
+/**
+ * Apply all filters (AND semantics).
+ */
+export function applyFilters(
+  records: ExportRecord[],
+  filters: { dateRange: DateRange; type: string; campaignId: string },
+): ExportRecord[] {
+  return filterByCampaign(
+    filterByType(filterByDateRange(records, filters.dateRange), filters.type),
+    filters.campaignId,
+  );
+}
+
 // ── CSV helpers ───────────────────────────────────────────────────────────────
 
 function escapeCell(value: string | number): string {
@@ -89,40 +114,54 @@ function formatIsoToLocalFull(iso: string): string {
 
 // ── CSV Export ────────────────────────────────────────────────────────────────
 
+export const ALL_COLUMNS = [
+  "date",
+  "time",
+  "txHash",
+  "contributor",
+  "campaign",
+  "campaignId",
+  "amountXlm",
+  "status",
+] as const;
+
+export type ExportColumn = (typeof ALL_COLUMNS)[number];
+
 /**
  * Download transaction history as a standard CSV file.
+ * Pass `columns` to select which columns to include (defaults to all).
  */
 export function exportCsv(
   records: ExportRecord[],
   filename = "transactions.csv",
+  columns: ExportColumn[] = [...ALL_COLUMNS],
 ) {
-  const headers = [
-    "Date",
-    "Time (UTC)",
-    "Transaction Hash",
-    "Contributor",
-    "Campaign",
-    "Campaign ID",
-    "Amount (XLM)",
-    "Status",
-  ];
+  const headerMap: Record<ExportColumn, string> = {
+    date: "Date",
+    time: "Time (UTC)",
+    txHash: "Transaction Hash",
+    contributor: "Contributor",
+    campaign: "Campaign",
+    campaignId: "Campaign ID",
+    amountXlm: "Amount (XLM)",
+    status: "Status",
+  };
+
+  const headers = columns.map((c) => headerMap[c]);
 
   const rows = records.map((r) => {
     const d = new Date(r.timestamp);
-    return [
-      d.toLocaleDateString(undefined, {
-        year: "numeric",
-        month: "2-digit",
-        day: "2-digit",
-      }),
-      d.toISOString().slice(11, 19),
-      r.txHash,
-      r.contributor,
-      r.campaignTitle,
-      r.campaignId,
-      r.amountXlm.toFixed(7),
-      r.status,
-    ];
+    const cellMap: Record<ExportColumn, string | number> = {
+      date: d.toLocaleDateString(undefined, { year: "numeric", month: "2-digit", day: "2-digit" }),
+      time: d.toISOString().slice(11, 19),
+      txHash: r.txHash,
+      contributor: r.contributor,
+      campaign: r.campaignTitle,
+      campaignId: r.campaignId,
+      amountXlm: r.amountXlm.toFixed(7),
+      status: r.status,
+    };
+    return columns.map((c) => cellMap[c]);
   });
 
   downloadFile(buildCsv(headers, rows), filename, "text/csv;charset=utf-8;");
@@ -274,4 +313,43 @@ export function exportPdf(
     win.document.write(html);
     win.document.close();
   }
+}
+
+// ── JSON Export ───────────────────────────────────────────────────────────────
+
+/**
+ * Download transaction records as a JSON file.
+ * Pass `columns` to select which fields to include (defaults to all).
+ */
+export function exportJson(
+  records: ExportRecord[],
+  filename = "transactions.json",
+  columns: ExportColumn[] = [...ALL_COLUMNS],
+) {
+  const fieldMap: Record<ExportColumn, keyof ExportRecord | "time" | "date"> = {
+    date: "timestamp",
+    time: "timestamp",
+    txHash: "txHash",
+    contributor: "contributor",
+    campaign: "campaignTitle",
+    campaignId: "campaignId",
+    amountXlm: "amountXlm",
+    status: "status",
+  };
+
+  const data = records.map((r) => {
+    const row: Record<string, unknown> = {};
+    for (const col of columns) {
+      if (col === "date") {
+        row.date = new Date(r.timestamp).toLocaleDateString(undefined, { year: "numeric", month: "2-digit", day: "2-digit" });
+      } else if (col === "time") {
+        row.time = new Date(r.timestamp).toISOString().slice(11, 19);
+      } else {
+        row[col] = r[fieldMap[col] as keyof ExportRecord];
+      }
+    }
+    return row;
+  });
+
+  downloadFile(JSON.stringify(data, null, 2), filename, "application/json");
 }

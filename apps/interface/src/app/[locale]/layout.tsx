@@ -1,5 +1,6 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import "../globals.css";
+import "../rtl.css";
 import { WalletProvider } from "@/context/WalletContext";
 import { ToastProvider } from "@/components/ui/Toast";
 import { ThemeProvider } from "@/context/ThemeContext";
@@ -10,15 +11,36 @@ import { ComparisonProvider } from "@/context/ComparisonContext";
 import { BookmarkProvider } from "@/context/BookmarkContext";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { ErrorHandlerInitializer } from "@/components/ErrorHandlerInitializer";
+import { SkipNav } from "@/components/ui/SkipNav";
+import { BreadcrumbProvider } from "@/context/BreadcrumbContext";
 import { NextIntlClientProvider } from "next-intl";
 import { getMessages } from "next-intl/server";
 import { rtlLocales, type Locale } from "@/i18n/config";
 import { notFound } from "next/navigation";
 import { routing } from "@/i18n/routing";
+import { ReduxProvider } from "@/store/Provider";
+import { ThemeApplier } from "@/components/ThemeApplier";
+import { ModalRenderer } from "@/components/ModalRenderer";
+import { ServiceWorkerRegistration } from "@/components/ServiceWorkerRegistration";
+import { CommandPaletteProvider } from "@/components/ui/CommandPaletteProvider";
 
 export const metadata: Metadata = {
-  title: "Fund-My-Cause",
+  title: "Fund My Cause",
   description: "Decentralized crowdfunding on the Stellar network",
+  manifest: "/manifest.webmanifest",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "black-translucent",
+    title: "Fund My Cause",
+  },
+};
+
+export const viewport: Viewport = {
+  themeColor: "#6366f1",
+  width: "device-width",
+  initialScale: 1,
+  minimumScale: 1,
+  viewportFit: "cover",
 };
 
 export default async function LocaleLayout({
@@ -40,6 +62,8 @@ export default async function LocaleLayout({
   return (
     <html lang={locale} dir={dir} className="dark">
       <body>
+        <ServiceWorkerRegistration />
+        <SkipNav />
         <ErrorBoundary level="page">
           <ErrorHandlerInitializer />
           <NextIntlClientProvider messages={messages}>

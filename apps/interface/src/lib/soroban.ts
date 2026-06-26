@@ -129,6 +129,9 @@ function normalizeStatus(value: unknown): CampaignStatus {
     }
   }
 
+  return "Active" as CampaignStatus;
+}
+
 async function simulateView(contractId: string, method: string, args: xdr.ScVal[] = []) {
   const rpc = new SorobanRpc.Server(RPC_URL);
   const contract = new Contract(contractId);
@@ -303,16 +306,6 @@ export async function fetchAllCampaigns(): Promise<CampaignData[]> {
  */
 export function getStaticCampaignIds(): string[] {
   return [...CONTRACT_IDS];
-}
-
-export async function fetchCampaignData(
-  contractId: string,
-): Promise<CampaignData> {
-  if (!isValidContractId(contractId)) {
-    throw new Error(`Invalid contract ID format: ${contractId}`);
-  }
-
-  return fetchCampaign(contractId);
 }
 
 export async function buildInitializeTx(
@@ -540,50 +533,6 @@ export interface ContributionRecord {
  * matches "contribute". Amount is read from the first i128 argument.
  * Returns an empty array when the contract account has no history yet.
  */
-export async function fetchAllCampaigns(): Promise<CampaignData[]> {
-  if (CONTRACT_IDS.length === 0) return [];
-  const results = await Promise.allSettled(
-    CONTRACT_IDS.map((id) => fetchCampaign(id))
-  );
-  return results
-    .filter((r): r is PromiseFulfilledResult<CampaignData> => r.status === "fulfilled")
-    .map((r) => r.value);
-}
-
-export async function fetchCampaignData(contractId: string): Promise<CampaignData> {
-  const [stats, deadline, title, description] = await Promise.all([
-    simulateView(contractId, "get_stats"),
-    simulateView(contractId, "deadline"),
-    simulateView(contractId, "title"),
-    simulateView(contractId, "description"),
-  ]);
-
-  // stats shape: { total_raised, goal, progress_bps, contributor_count, average_contribution, ... }
-  const raisedStroops = Number(stats.total_raised ?? 0);
-  const goalStroops = Number(stats.goal ?? 0);
-  const deadlineSecs = Number(deadline);
-  const now = Math.floor(Date.now() / 1000);
-
-  let status: CampaignStatus = "Active";
-  if (deadlineSecs < now) {
-    status = raisedStroops >= goalStroops ? "Successful" : "Refunded";
-  }
-
-  return {
-    contractId,
-    title: String(title),
-    description: String(description),
-    raised: raisedStroops / 1e7,
-    goal: goalStroops / 1e7,
-    deadline: new Date(deadlineSecs * 1000).toISOString(),
-    creator: "",
-    socialLinks: [],
-    contributorCount: Number(stats.contributor_count ?? 0),
-    averageContribution: Number(stats.average_contribution ?? 0) / 1e7,
-    status,
-  };
-}
-
 // ── Horizon response types (minimal) ─────────────────────────────────────────
 
 interface HorizonOperation {
@@ -662,7 +611,3 @@ export async function fetchTransactionHistory(
     return [];
   }
 }
-
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
-// ── RPC URL alias ─────────────────────────────────────────────────────────────

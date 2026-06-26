@@ -2,6 +2,7 @@
 
 import React, { useState } from "react";
 import { X, AlertTriangle, Loader2 } from "lucide-react";
+import { useTranslations } from "next-intl";
 
 interface CancelCampaignModalProps {
   campaignTitle: string;
@@ -15,13 +16,14 @@ export function CancelCampaignModal({
   onClose,
   onConfirm,
 }: CancelCampaignModalProps) {
+  const t = useTranslations("cancelCampaign");
   const [reason, setReason] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const handleConfirm = async () => {
     if (!reason.trim()) {
-      setError("Please provide a cancellation reason.");
+      setError(t("validationReason"));
       return;
     }
     setLoading(true);
@@ -55,7 +57,7 @@ export function CancelCampaignModal({
             </div>
             <div>
               <h2 id="cancel-modal-title" className="font-semibold text-white">
-                Cancel Campaign
+                {t("title")}
               </h2>
               <p className="mt-0.5 text-xs text-gray-400 line-clamp-1">{campaignTitle}</p>
             </div>
@@ -63,7 +65,7 @@ export function CancelCampaignModal({
           <button
             onClick={onClose}
             disabled={loading}
-            aria-label="Close"
+            aria-label={t("close")}
             className="p-1.5 rounded-lg text-gray-500 hover:bg-gray-800 transition disabled:opacity-50"
           >
             <X size={16} />
@@ -71,15 +73,17 @@ export function CancelCampaignModal({
         </div>
 
         {/* Warning */}
-        <p className="text-sm text-gray-300">
-          This action is <span className="font-semibold text-red-400">irreversible</span>. All
-          contributors will be able to claim a full refund.
-        </p>
+        <p
+          className="text-sm text-gray-300"
+          dangerouslySetInnerHTML={{
+            __html: t.raw("irreversibleWarning") as string,
+          }}
+        />
 
         {/* Reason input */}
         <div>
           <label htmlFor="cancel-reason" className="mb-1.5 block text-sm text-gray-400">
-            Reason for cancellation <span className="text-red-400">*</span>
+            {t("reasonLabel")} <span className="text-red-400">*</span>
           </label>
           <textarea
             id="cancel-reason"
@@ -87,7 +91,7 @@ export function CancelCampaignModal({
             value={reason}
             onChange={(e) => setReason(e.target.value)}
             disabled={loading}
-            placeholder="e.g. Project scope changed, unable to deliver…"
+            placeholder={t("reasonPlaceholder")}
             className="w-full rounded-xl border border-gray-700 bg-gray-800 px-4 py-2 text-sm text-white placeholder-gray-500 focus:border-red-500 focus:outline-none disabled:opacity-50"
           />
         </div>
@@ -101,7 +105,7 @@ export function CancelCampaignModal({
             disabled={loading}
             className="flex-1 rounded-xl px-4 py-2 text-sm text-gray-400 hover:text-white transition disabled:opacity-50"
           >
-            Keep Campaign
+            {t("cancelButton")}
           </button>
           <button
             onClick={handleConfirm}
@@ -110,7 +114,7 @@ export function CancelCampaignModal({
             aria-disabled={!reason.trim() || loading}
           >
             {loading && <Loader2 size={14} className="animate-spin" />}
-            Confirm Cancel
+            {t("confirmButton")}
           </button>
         </div>
       </div>

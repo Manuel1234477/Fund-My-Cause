@@ -224,6 +224,8 @@ export async function getCampaignStats(
  * @param {string} contributor - The contributor's Stellar public key
  * @param {bigint} amount - Contribution amount in stroops
  * @param {SignFn} signTx - Wallet signing function (e.g. from WalletContext)
+ * @param {string} [tokenId] - Token contract address (defaults to campaign primary token)
+ * @param {string} [message] - Optional contribution message (max 256 chars)
  * @returns {Promise<string>} Transaction hash on success
  * @throws {ContractError} If submission fails
  */
@@ -232,7 +234,14 @@ export async function contribute(
   contributor: string,
   amount: bigint,
   signTx: SignFn,
+  tokenId?: string,
+  message?: string,
 ): Promise<string> {
+  // Resolve token: use provided tokenId or fall back to the campaign's primary token
+  const resolvedToken =
+    tokenId ??
+    String(await simulateView(contractId, "token"));
+
   return invokeContract(
     contributor,
     contractId,
@@ -240,6 +249,8 @@ export async function contribute(
     [
       new Address(contributor).toScVal(),
       nativeToScVal(amount, { type: "i128" }),
+      new Address(resolvedToken).toScVal(),
+      message != null ? nativeToScVal(message, { type: "string" }) : nativeToScVal(null),
     ],
     signTx,
   );
@@ -342,4 +353,191 @@ export async function unpauseCampaign(
   signTx: SignFn,
 ): Promise<string> {
   return invokeContract(admin, contractId, "unpause", [], signTx);
+}
+
+// ── Gas estimation ────────────────────────────────────────────────────────────
+
+/**
+ * Estimated network fee for a contract operation, in stroops and XLM.
+ */
+export interface GasEstimate {
+  /** Minimum resource fee in stroops as reported by simulation */
+  feeStroops: number;
+  /** Human-readable fee string (e.g. "0.0001234 XLM") */
+  feeXlm: string;
+}
+
+/**
+ * Simulates a `contribute` call and returns the estimated network fee.
+ *
+ * Uses a read-only simulation (no transaction submitted) so no signing is
+ * required. The returned fee is the `minResourceFee` from the Soroban RPC
+ * simulation result — the actual fee the user will pay depends on the
+ * resource fee set during `prepareTransaction`, but this provides a
+ * transparent estimate before the user signs.
+ *
+ * @param {string} contractId - The Soroban contract address
+ * @param {string} contributor - Contributor's Stellar public key (used for footprint)
+ * @param {bigint} amount - Contribution amount in stroops
+ * @param {string} tokenId - Token contract address
+ * @returns {Promise<GasEstimate>} Estimated fee breakdown
+ * @throws {ContractError} If simulation fails
+ */
+export async function estimateContributionGas(
+  contractId: string,
+  contributor: string,
+  amount: bigint,
+  tokenId: string,
+): Promise<GasEstimate> {
+  if (!isValidContractId(contractId)) {
+    throw new ContractError(`Invalid contract ID format: ${contractId}`);
+  }
+
+  const rpc = getContractClient();
+  const contract = new Contract(contractId);
+  const account = new Account(
+    "GAAZI4TCR3TY5OJHCTJC2A4QSY6CJWJH5IAJTGKIN2ER7LBNVKOCCWN",
+    "0",
+  );
+
+  const tx = new TransactionBuilder(account, {
+    fee: BASE_FEE,
+    networkPassphrase: NETWORK_PASSPHRASE,
+  })
+    .addOperation(
+      contract.call(
+        "contribute",
+        new Address(contributor).toScVal(),
+        nativeToScVal(amount, { type: "i128" }),
+        new Address(tokenId).toScVal(),
+        nativeToScVal(null),
+      ),
+    )
+    .setTimeout(30)
+    .build();
+
+  const result = await rpc.simulateTransaction(tx);
+  if (SorobanRpc.Api.isSimulationError(result)) {
+    throw new ContractError(result.error);
+  }
+  const sim = result as SorobanRpc.Api.SimulateTransactionSuccessResponse;
+  const feeStroops = parseInt(sim.minResourceFee ?? "0", 10);
+  const feeXlm = (feeStroops / 10_000_000).toFixed(7) + " XLM";
+  return { feeStroops, feeXlm };
+}
+
+// ── Paginated contributor access ──────────────────────────────────────────────
+
+/**
+ * Returns a page of contributor addresses from the campaign's indexed list.
+ *
+ * The contract stores contributors in O(1) indexed keys rather than a single
+ * growing Vec, so each page read is proportional only to `limit`, not to the
+ * total number of contributors. The contract caps `limit` at 50.
+ *
+ * @param {string} contractId - The Soroban contract address
+ * @param {number} offset - Zero-based start index
+ * @param {number} limit - Maximum addresses to return (capped at 50 on-chain)
+ * @returns {Promise<string[]>} Contributor Stellar addresses for the requested page
+ * @throws {ContractError} If the contract call fails
+ */
+export async function getContributorsPaginated(
+  contractId: string,
+  offset: number,
+  limit: number,
+): Promise<string[]> {
+  const raw = await simulateView(contractId, "contributor_list", [
+    nativeToScVal(offset, { type: "u32" }),
+    nativeToScVal(limit, { type: "u32" }),
+  ]);
+  return (raw as Array<unknown>).map(String);
+}
+
+// ── DeFi helpers ──────────────────────────────────────────────────────────────
+
+/**
+ * Returns the list of accepted token contract addresses for a campaign.
+ * Falls back to the campaign's primary token when no explicit whitelist is set.
+ */
+export async function getAcceptedTokens(contractId: string): Promise<string[]> {
+  const raw = await simulateView(contractId, "accepted_tokens");
+  return (raw as Array<unknown>).map(String);
+}
+
+/**
+ * Returns the current yield configuration for a campaign, or null if not set.
+ */
+export async function getYieldConfig(contractId: string): Promise<{
+  rewardToken: string;
+  pool: bigint;
+  rateBps: number;
+  startTime: bigint;
+} | null> {
+  const raw = await simulateView(contractId, "get_yield_config");
+  if (!raw) return null;
+  const r = raw as Record<string, unknown>;
+  return {
+    rewardToken: String(r.reward_token),
+    pool: BigInt(r.pool as string | number),
+    rateBps: Number(r.rate_bps),
+    startTime: BigInt(r.start_time as string | number),
+  };
+}
+
+/**
+ * Returns the pending (unclaimed) yield for a contributor, in reward token units.
+ */
+export async function getPendingYield(
+  contractId: string,
+  contributor: string,
+): Promise<bigint> {
+  const raw = await simulateView(contractId, "pending_yield", [
+    new Address(contributor).toScVal(),
+  ]);
+  return BigInt(raw as string | number);
+}
+
+/**
+ * Claims accrued yield for the calling contributor.
+ * Returns the amount claimed (in reward token units).
+ */
+export async function claimYield(
+  contractId: string,
+  contributor: string,
+  signTx: SignFn,
+): Promise<string> {
+  return invokeContract(
+    contributor,
+    contractId,
+    "claim_yield",
+    [new Address(contributor).toScVal()],
+    signTx,
+  );
+}
+
+/**
+ * Configures a yield reward pool. Creator only.
+ * @param rewardTokenId - Token contract address used to pay yield
+ * @param pool - Total reward tokens to deposit (in token's smallest unit)
+ * @param rateBps - Annual yield rate in basis points (e.g. 500 = 5%)
+ */
+export async function configureYield(
+  contractId: string,
+  creator: string,
+  rewardTokenId: string,
+  pool: bigint,
+  rateBps: number,
+  signTx: SignFn,
+): Promise<string> {
+  return invokeContract(
+    creator,
+    contractId,
+    "configure_yield",
+    [
+      new Address(rewardTokenId).toScVal(),
+      nativeToScVal(pool, { type: "i128" }),
+      nativeToScVal(rateBps, { type: "u32" }),
+    ],
+    signTx,
+  );
 }

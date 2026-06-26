@@ -1,0 +1,181 @@
+{
+  "nav": {
+    "connectWallet": "连接钱包",
+    "disconnect": "断开连接",
+    "notifications": "通知",
+    "toggleTheme": "切换主题",
+    "openMenu": "打开菜单",
+    "closeMenu": "关闭菜单",
+    "restoringSession": "正在恢复钱包会话…",
+    "networkMismatch": "您的钱包连接到 {walletNetwork}，但此应用使用 {appNetwork}。请在 Freighter 中切换网络。"
+  },
+  "home": {
+    "badge": "基于 Stellar · 由 Soroban 驱动",
+    "heroTitle": "资助未来，\n链上进行。",
+    "heroSubtitle": "在 Stellar 网络上以极速无需信任的交易创建或支持活动。",
+    "exploreCampaigns": "探索活动",
+    "startCampaign": "发起活动",
+    "featuredCampaigns": "精选活动",
+    "viewAll": "查看全部",
+    "featured": "精选",
+    "raised": "已筹集 {amount} XLM",
+    "goal": "目标：{amount} XLM",
+    "timeLeft": "剩余 {time}",
+    "pledgeNow": "立即支持",
+    "successfullyFunded": "已成功筹款",
+    "howItWorks": "运作方式",
+    "stats": {
+      "campaignsLaunched": "已发起活动",
+      "totalRaised": "总筹集金额",
+      "contributors": "支持者"
+    },
+    "steps": {
+      "createTitle": "创建",
+      "createDesc": "在几分钟内以您的目标、截止日期和代币在链上部署活动。",
+      "fundTitle": "资助",
+      "fundDesc": "支持者在截止日期前认捐 XLM 或任何 Stellar 代币。",
+      "withdrawTitle": "提款或退款",
+      "withdrawDesc": "目标达成？提取资金。目标未达成？支持者自动申请退款。"
+    },
+    "footer": {
+      "campaigns": "活动",
+      "create": "创建",
+      "dashboard": "仪表板",
+      "bookmarks": "书签",
+      "stellarDocs": "Stellar 文档",
+      "license": "MIT 许可证 · 基于 Stellar 构建"
+    }
+  },
+  "campaigns": {
+    "title": "活动",
+    "searchPlaceholder": "搜索活动...",
+    "sortNewest": "最新",
+    "sortMostFunded": "筹款最多",
+    "sortEndingSoon": "即将结束",
+    "filterAll": "全部",
+    "filterActive": "进行中",
+    "filterFunded": "已筹款",
+    "filterEnded": "已结束",
+    "filterLabel": "筛选活动",
+    "found": "找到 {count} 个活动",
+    "foundPlural": "找到 {count} 个活动",
+    "noResults": "未找到活动",
+    "noResultsDesc": "请尝试调整搜索条件或筛选器。",
+    "clearFilters": "清除筛选",
+    "previous": "上一页",
+    "next": "下一页",
+    "page": "第 {current} 页，共 {total} 页",
+    "selected": "已选 {count} 个",
+    "compare": "比较",
+    "clear": "清除"
+  },
+  "campaignCard": {
+    "funded": "已筹款",
+    "ended": "已结束",
+    "raised": "已筹集",
+    "goal": "目标",
+    "compare": "比较",
+    "video": "视频",
+    "shareCampaign": "分享活动",
+    "bookmarkCampaign": "收藏活动",
+    "removeBookmark": "取消收藏",
+    "pledgeNow": "立即支持",
+    "successfullyFunded": "已成功筹款",
+    "campaignEnded": "活动已结束",
+    "pledgeTo": "支持 {title}",
+    "fundedAriaLabel": "{title} — 已成功筹款",
+    "endedAriaLabel": "{title} — 活动已结束",
+    "pledgeAriaLabel": "支持 {title}"
+  },
+  "pledgeModal": {
+    "title": "支持 {campaignTitle}",
+    "close": "关闭支持窗口",
+    "unfundedWarning": "⚠️ 此账户在网络上未充值。您的交易将失败。",
+    "amountLabel": "XLM 金额（最低 {min}）",
+    "amountPlaceholder": "XLM 金额（最低 {min}）",
+    "minimumNote": "最低：{min} XLM",
+    "confirmPledge": "确认支持",
+    "connectWalletToPledge": "连接钱包以支持",
+    "confirmPledgeAriaLabel": "确认支持 {campaignTitle}",
+    "connectWalletAriaLabel": "连接钱包以支持",
+    "validationAmount": "请输入有效金额。",
+    "validationMinimum": "最低贡献为 {min} XLM。"
+  },
+  "goalSuccess": {
+    "title": "目标达成！🎉",
+    "raisedTotal": "总共筹集",
+    "nextSteps": "后续步骤",
+    "step1": "与支持者分享您的成功",
+    "step2": "将资金提取到您的钱包",
+    "step3": "履行您的活动承诺",
+    "shareSuccess": "分享成功",
+    "withdrawFunds": "提取资金",
+    "dismiss": "关闭",
+    "close": "关闭"
+  },
+  "cancelCampaign": {
+    "title": "取消活动",
+    "irreversibleWarning": "此操作<strong>不可撤销</strong>。所有支持者均可申请全额退款。",
+    "reasonLabel": "取消原因",
+    "reasonPlaceholder": "请输入原因…",
+    "confirmButton": "取消活动",
+    "cancelButton": "返回",
+    "validationReason": "请提供取消原因。",
+    "close": "关闭"
+  },
+  "campaignDetail": {
+    "copyContractId": "复制合约 ID",
+    "copy": "复制",
+    "copied": "已复制！",
+    "viewExplorer": "在 Stellar Expert 上查看",
+    "explorer": "浏览器",
+    "dataUnavailable": "活动数据不可用。",
+    "retry": "重试"
+  },
+  "countdown": {
+    "ended": "活动已结束",
+    "left": "剩余 {time}",
+    "days": "天",
+    "hours": "时",
+    "minutes": "分",
+    "seconds": "秒",
+    "endedAriaLabel": "活动已结束",
+    "remainingAriaLabel": "剩余 {days}天 {hours}时 {minutes}分 {seconds}秒"
+  },
+  "bookmarks": {
+    "title": "我的书签",
+    "export": "导出",
+    "import": "导入",
+    "empty": "暂无书签。",
+    "browseCampaigns": "浏览活动",
+    "deadlineAlert": "{title} 将在 {days, plural, =0 {不到一天} one {# 天} other {# 天}} 后结束！"
+  },
+  "compare": {
+    "title": "比较活动",
+    "share": "分享",
+    "clear": "清除",
+    "noSelection": "未选择要比较的活动。",
+    "browseCampaigns": "浏览活动",
+    "selectHint": "从活动页面最多选择 4 个活动进行比较。",
+    "metric": "指标",
+    "status": "状态",
+    "raised": "已筹集",
+    "goal": "目标",
+    "progress": "进度",
+    "deadline": "截止日期",
+    "contributors": "支持者",
+    "token": "代币",
+    "removeFromComparison": "从比较中移除 {title}",
+    "copiedToClipboard": "比较链接已复制到剪贴板！"
+  },
+  "notFound": {
+    "title": "404",
+    "message": "此页面不存在。",
+    "goHome": "返回首页"
+  },
+  "common": {
+    "loading": "加载中…",
+    "error": "出现错误。",
+    "retry": "重试"
+  }
+}

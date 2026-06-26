@@ -24,8 +24,11 @@ import { GoalSuccessModal } from "@/components/ui/GoalSuccessModal";
 import { GoalSuccessBadge } from "@/components/ui/GoalSuccessBadge";
 import { ShareModal } from "@/components/ui/ShareModal";
 import { PausedBanner } from "@/components/ui/PausedBanner";
+import { CampaignAnalytics } from "@/components/ui/CampaignAnalytics";
+import { useTranslations } from "next-intl";
 
 function ContractIdRow({ contractId }: { contractId: string }) {
+  const t = useTranslations("campaignDetail");
   const [copied, setCopied] = useState(false);
 
   const handleCopy = () => {
@@ -43,7 +46,7 @@ function ContractIdRow({ contractId }: { contractId: string }) {
       <div className="relative flex items-center gap-2">
         <button
           onClick={handleCopy}
-          aria-label="Copy contract ID"
+          aria-label={t("copyContractId")}
           className="flex items-center gap-1 rounded-lg px-2 py-1 text-xs text-gray-500 hover:bg-gray-200 dark:hover:bg-gray-800 transition"
         >
           {copied ? (
@@ -52,17 +55,17 @@ function ContractIdRow({ contractId }: { contractId: string }) {
             <Copy size={13} />
           )}
           <span className={cn(copied && "text-green-500")}>
-            {copied ? "Copied!" : "Copy"}
+            {copied ? t("copied") : t("copy")}
           </span>
         </button>
         <a
           href={`https://stellar.expert/explorer/testnet/contract/${contractId}`}
           target="_blank"
           rel="noopener noreferrer"
-          aria-label="View on Stellar Expert"
+          aria-label={t("viewExplorer")}
           className="flex items-center gap-1 rounded-lg px-2 py-1 text-xs text-indigo-500 hover:bg-gray-200 dark:hover:bg-gray-800 transition"
         >
-          <ExternalLink size={13} /> Explorer
+          <ExternalLink size={13} /> {t("explorer")}
         </a>
       </div>
     </div>
@@ -70,6 +73,7 @@ function ContractIdRow({ contractId }: { contractId: string }) {
 }
 
 export function CampaignDetailContent({ contractId }: { contractId: string }) {
+  const tDetail = useTranslations("campaignDetail");
   const {
     info,
     stats,
@@ -106,13 +110,13 @@ export function CampaignDetailContent({ contractId }: { contractId: string }) {
       <div className="mx-auto max-w-3xl px-6 py-16">
         <div className="rounded-2xl border border-red-200 bg-red-50 p-6 text-center dark:border-red-900 dark:bg-red-950/40">
           <p className="text-sm text-red-600 dark:text-red-300">
-            {error ?? "Campaign data is unavailable."}
+            {error ?? tDetail("dataUnavailable")}
           </p>
           <button
             onClick={refresh}
             className="mt-4 rounded-xl bg-red-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-red-500"
           >
-            Retry
+            {tDetail("retry")}
           </button>
         </div>
       </div>
@@ -216,6 +220,8 @@ export function CampaignDetailContent({ contractId }: { contractId: string }) {
             <p className="mt-1 text-xs text-gray-500">Remaining</p>
           </div>
         </div>
+
+        <CampaignAnalytics stats={stats} info={info} />
 
         <p className="leading-relaxed text-gray-700 dark:text-gray-300">
           {info.description}

@@ -7,6 +7,8 @@ import { TransactionStatus, TxStatus } from "@/components/ui/TransactionStatus";
 import { useToast } from "@/components/ui/Toast";
 import { contribute } from "@/lib/contract";
 import { useAccountExists } from "@/hooks/useAccountExists";
+import { useTranslations } from "next-intl";
+import { computePledgeSuggestions } from "@/lib/pledgeSuggestions";
 
 const XLM_TO_STROOPS = 10_000_000n;
 const PLEDGE_DEBOUNCE_MS = 2000;
@@ -16,6 +18,12 @@ interface PledgeModalProps {
   campaignTitle: string;
   /** Minimum contribution in stroops. */
   minContribution?: bigint;
+  /** Per-contributor maximum in stroops (0 = no cap). */
+  maxContribution?: bigint;
+  /** Campaign goal in stroops (used for suggestion engine). */
+  goalStroops?: bigint;
+  /** Amount already raised in stroops (used for suggestion engine). */
+  raisedStroops?: bigint;
   onClose: () => void;
   /** Called after a successful pledge so the parent can refresh stats. */
   onSuccess?: () => void;
@@ -29,6 +37,9 @@ export function PledgeModal({
   contractId,
   campaignTitle,
   minContribution = 1n,
+  maxContribution = 0n,
+  goalStroops = 0n,
+  raisedStroops = 0n,
   onClose,
   onSuccess,
   onOptimisticContribute,
@@ -38,6 +49,7 @@ export function PledgeModal({
   const { exists: accountExists, loading: accountLoading } =
     useAccountExists(address);
   const { addToast } = useToast();
+  const t = useTranslations("pledgeModal");
   const [amount, setAmount] = useState("");
   const [txStatus, setTxStatus] = useState<TxStatus>("idle");
   const [txHash, setTxHash] = useState<string>("");
@@ -82,6 +94,14 @@ export function PledgeModal({
 
   const minXlm = Number(minContribution) / 1e7;
 
+  // ── Suggestion engine ──────────────────────────────────────────────────────
+  const suggestions = computePledgeSuggestions({
+    goalStroops,
+    raisedStroops,
+    minContributionStroops: minContribution,
+    maxContributionStroops: maxContribution,
+  });
+
   const handlePledge = async () => {
     if (!address) {
       await connect();
@@ -91,13 +111,13 @@ export function PledgeModal({
 
     const xlm = parseFloat(amount);
     if (!amount || isNaN(xlm) || xlm <= 0) {
-      addToast("Please enter a valid amount.", "error");
+      addToast(t("validationAmount"), "error");
       return;
     }
 
     const stroops = BigInt(Math.round(xlm * 1e7));
     if (stroops < minContribution) {
-      addToast(`Minimum contribution is ${minXlm} XLM.`, "error");
+      addToast(t("validationMinimum", { min: minXlm }), "error");
       return;
     }
 
@@ -151,7 +171,7 @@ export function PledgeModal({
   return (
     // Backdrop: closes modal on click. Keyboard dismissal (Escape) is handled by the focus trap inside the dialog.
     <div
-      className="fixed inset-0 bg-black/60 flex items-center justify-center z-50"
+      className="fixed inset-0 bg-black/60 flex items-end sm:items-center justify-center z-50"
       aria-modal="true"
       onClick={(e) => {
         if (e.target === e.currentTarget && !isProcessing) onClose();
@@ -161,15 +181,15 @@ export function PledgeModal({
         ref={dialogRef}
         role="dialog"
         aria-labelledby={titleId}
-        className="ds-card p-6 w-full max-w-md space-y-4"
+        className="ds-card p-6 w-full sm:max-w-md space-y-4 rounded-b-none sm:rounded-2xl pb-[calc(1.5rem+env(safe-area-inset-bottom))]"
       >
         <div className="flex justify-between items-center">
           <h2 id={titleId} className="text-lg font-semibold">
-            Pledge to {campaignTitle}
+            {t("title", { campaignTitle })}
           </h2>
           <button
             onClick={onClose}
-            aria-label="Close pledge modal"
+            aria-label={t("close")}
             disabled={isProcessing}
           >
             <X size={20} aria-hidden="true" />
@@ -188,17 +208,17 @@ export function PledgeModal({
             <div className="space-y-1">
               {address && !accountLoading && !accountExists && (
                 <p className="text-xs text-yellow-400" role="alert">
-                  ⚠️ This account is not funded on the network. Your transaction
-                  will fail.
+                  {t("unfundedWarning")}
                 </p>
               )}
               <label htmlFor="pledge-amount" className="sr-only">
-                Amount in XLM (minimum {minXlm})
+                {t("amountLabel", { min: minXlm })}
               </label>
               <input
                 id="pledge-amount"
                 type="number"
-                placeholder={`Amount in XLM (min ${minXlm})`}
+                inputMode="decimal"
+                placeholder={t("amountPlaceholder", { min: minXlm })}
                 value={amount}
                 min={minXlm}
                 step="0.1"
@@ -206,11 +226,37 @@ export function PledgeModal({
                   setAmount(e.target.value)
                 }
                 disabled={isProcessing}
-                aria-label={`Amount in XLM, minimum ${minXlm}`}
-                className="ds-input w-full px-4 py-2 disabled:opacity-50"
+                aria-label={t("amountLabel", { min: minXlm })}
+                className="ds-input w-full px-4 py-3 disabled:opacity-50 text-base"
               />
               {minContribution > XLM_TO_STROOPS && (
-                <p className="text-xs text-gray-500">Minimum: {minXlm} XLM</p>
+                <p className="text-xs text-gray-500">
+                  {t("minimumNote", { min: minXlm })}
+                </p>
+              )}
+              {/* ── Suggestion chips ─────────────────────────────────────── */}
+              {suggestions.length > 0 && (
+                <div className="flex flex-wrap gap-2 pt-1" role="group" aria-label="Suggested amounts">
+                  {suggestions.map((s) => {
+                    const xlmValue = (Number(s.amountStroops) / 1e7).toString();
+                    return (
+                      <button
+                        key={xlmValue}
+                        type="button"
+                        onClick={() => setAmount(xlmValue)}
+                        disabled={isProcessing}
+                        className={`px-3 py-1 rounded-full text-xs font-medium transition border ${
+                          s.completesGoal
+                            ? "bg-indigo-600 border-indigo-500 text-white hover:bg-indigo-500"
+                            : "bg-gray-800 border-gray-700 text-gray-300 hover:border-indigo-500 hover:text-white"
+                        } disabled:opacity-40`}
+                        aria-label={s.completesGoal ? `${s.label} — completes goal` : s.label}
+                      >
+                        {s.label}
+                      </button>
+                    );
+                  })}
+                </div>
               )}
             </div>
             <button
@@ -218,12 +264,12 @@ export function PledgeModal({
               disabled={isProcessing}
               aria-label={
                 address
-                  ? `Confirm pledge to ${campaignTitle}`
-                  : "Connect wallet to pledge"
+                  ? t("confirmPledgeAriaLabel", { campaignTitle })
+                  : t("connectWalletAriaLabel")
               }
-              className="ds-btn-primary w-full py-2"
+              className="ds-btn-primary w-full py-3 touch-manipulation"
             >
-              {address ? "Confirm Pledge" : "Connect Wallet to Pledge"}
+              {address ? t("confirmPledge") : t("connectWalletToPledge")}
             </button>
           </>
         )}

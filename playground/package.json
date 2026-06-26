@@ -1,0 +1,16 @@
+{
+  "name": "@fund-my-cause/playground",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Interactive contract playground for testnet exploration",
+  "scripts": {
+    "start": "node scripts/run.js",
+    "query": "node scripts/query.js",
+    "contribute": "node scripts/contribute.js"
+  },
+  "dependencies": {
+    "@stellar/stellar-sdk": "14.6.1",
+    "dotenv": "^16.0.0"
+  }
+}

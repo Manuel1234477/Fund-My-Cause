@@ -1,0 +1,156 @@
+"""
+Campaign Recommendation Service (#635)
+
+Exposes GET /recommendations with per-wallet personalisation.
+Falls back to trending/popular campaigns for cold-start users.
+Results are cached with a configurable TTL.
+"""
+
+from __future__ import annotations
+
+import math
+import time
+from dataclasses import dataclass, field
+from typing import Optional
+
+from fastapi import FastAPI, Query
+from fastapi.responses import JSONResponse
+
+# ---------------------------------------------------------------------------
+# In-process cache (TTL-based)
+# ---------------------------------------------------------------------------
+_CACHE: dict[str, tuple[float, object]] = {}
+CACHE_TTL_SECONDS = 300  # 5 minutes
+
+
+def _cache_get(key: str) -> object | None:
+    entry = _CACHE.get(key)
+    if entry and time.time() - entry[0] < CACHE_TTL_SECONDS:
+        return entry[1]
+    return None
+
+
+def _cache_set(key: str, value: object) -> None:
+    _CACHE[key] = (time.time(), value)
+
+
+# ---------------------------------------------------------------------------
+# Domain types
+# ---------------------------------------------------------------------------
+@dataclass
+class Campaign:
+    id: str
+    title: str
+    category: str
+    total_raised: int
+    contributor_count: int
+    created_at: float
+
+
+@dataclass
+class IndexedActivity:
+    """Indexed on-chain activity for a contributor wallet."""
+
+    wallet: str
+    contributed_campaign_ids: list[str] = field(default_factory=list)
+    preferred_categories: list[str] = field(default_factory=list)
+
+
+# ---------------------------------------------------------------------------
+# Stub data store (replace with real DB / Horizon indexer in production)
+# ---------------------------------------------------------------------------
+_CAMPAIGNS: list[Campaign] = [
+    Campaign("c1", "Open-Source Wallet", "tech", 50_000, 120, time.time() - 86400),
+    Campaign("c2", "Community Garden", "environment", 20_000, 45, time.time() - 3600),
+    Campaign("c3", "Stellar SDK Docs", "tech", 80_000, 200, time.time() - 172800),
+    Campaign("c4", "Local Music Festival", "arts", 15_000, 30, time.time() - 7200),
+    Campaign("c5", "Solar Panels for Schools", "environment", 120_000, 300, time.time() - 43200),
+]
+
+_ACTIVITY: dict[str, IndexedActivity] = {}
+
+
+# ---------------------------------------------------------------------------
+# Scoring helpers
+# ---------------------------------------------------------------------------
+def _trending_score(c: Campaign) -> float:
+    """Recency-weighted activity: more weight to recent, active campaigns."""
+    age_hours = max((time.time() - c.created_at) / 3600, 1)
+    return (c.contributor_count * math.log1p(c.total_raised)) / age_hours
+
+
+def _personalised_score(c: Campaign, activity: IndexedActivity) -> float:
+    base = _trending_score(c)
+    # Boost campaigns in categories the user has previously contributed to
+    category_boost = 2.0 if c.category in activity.preferred_categories else 1.0
+    # Exclude campaigns the user already contributed to
+    already_contributed = c.id in activity.contributed_campaign_ids
+    return 0.0 if already_contributed else base * category_boost
+
+
+def _recommend(wallet: Optional[str], limit: int) -> list[dict]:
+    activity = _ACTIVITY.get(wallet) if wallet else None
+
+    if activity:
+        scored = sorted(
+            _CAMPAIGNS,
+            key=lambda c: _personalised_score(c, activity),
+            reverse=True,
+        )
+    else:
+        # Cold-start: return trending
+        scored = sorted(_CAMPAIGNS, key=_trending_score, reverse=True)
+
+    return [
+        {
+            "campaign_id": c.id,
+            "title": c.title,
+            "category": c.category,
+            "total_raised": c.total_raised,
+            "contributor_count": c.contributor_count,
+            "score": round(
+                _personalised_score(c, activity) if activity else _trending_score(c), 4
+            ),
+        }
+        for c in scored[:limit]
+    ]
+
+
+# ---------------------------------------------------------------------------
+# FastAPI app
+# ---------------------------------------------------------------------------
+app = FastAPI(title="Fund-My-Cause Recommendation Service", version="1.0.0")
+
+
+@app.get("/health")
+def health() -> dict:
+    return {"status": "ok"}
+
+
+@app.get("/recommendations")
+def get_recommendations(
+    wallet: Optional[str] = Query(None, description="Stellar wallet address for personalisation"),
+    limit: int = Query(5, ge=1, le=20, description="Maximum number of recommendations"),
+) -> JSONResponse:
+    """
+    Return ranked campaign recommendations.
+
+    - If `wallet` is provided and has indexed activity, results are personalised
+      by category affinity and exclude campaigns already contributed to.
+    - Cold-start (unknown wallet or no wallet) returns the top trending campaigns.
+    - Results are cached per (wallet, limit) key for CACHE_TTL_SECONDS.
+    """
+    cache_key = f"{wallet}:{limit}"
+    cached = _cache_get(cache_key)
+    if cached is not None:
+        return JSONResponse(content=cached, headers={"X-Cache": "HIT"})
+
+    recommendations = _recommend(wallet, limit)
+    payload = {
+        "wallet": wallet,
+        "personalised": wallet is not None and wallet in _ACTIVITY,
+        "recommendations": recommendations,
+        "cached_at": time.time(),
+    }
+    _cache_set(cache_key, payload)
+    return JSONResponse(content=payload, headers={"X-Cache": "MISS"})

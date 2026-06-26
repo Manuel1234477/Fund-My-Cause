@@ -1,0 +1,169 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: logstash-config
+  namespace: fund-my-cause
+data:
+  logstash.conf: |
+    input {
+      tcp {
+        port => 5000
+        codec => json
+      }
+      udp {
+        port => 5000
+        codec => json
+      }
+      kubernetes {
+        kubernetes_url => "https://kubernetes.default.svc.cluster.local:443"
+        ca_file => "/var/run/secrets/kubernetes.io/serviceaccount/ca.crt"
+        token_file => "/var/run/secrets/kubernetes.io/serviceaccount/token"
+        namespace_id_file => "/var/run/secrets/kubernetes.io/serviceaccount/namespace"
+      }
+    }
+
+    filter {
+      if [type] == "kube-logs" {
+        mutate {
+          add_field => { "[@metadata][index_name]" => "k8s-logs-%{+YYYY.MM.dd}" }
+        }
+      }
+
+      if [type] == "app-logs" {
+        mutate {
+          add_field => { "[@metadata][index_name]" => "app-logs-%{+YYYY.MM.dd}" }
+        }
+      }
+
+      if [type] == "contract-logs" {
+        mutate {
+          add_field => { "[@metadata][index_name]" => "contract-logs-%{+YYYY.MM.dd}" }
+        }
+      }
+
+      # Parse JSON logs
+      if [message] =~ /^\{.*\}$/ {
+        json {
+          source => "message"
+          target => "parsed"
+        }
+      }
+
+      # Add timestamp
+      date {
+        match => [ "timestamp", "ISO8601" ]
+        target => "@timestamp"
+      }
+
+      # Add environment metadata
+      mutate {
+        add_field => { "environment" => "production" }
+        add_field => { "service" => "fund-my-cause" }
+      }
+    }
+
+    output {
+      elasticsearch {
+        hosts => ["elasticsearch:9200"]
+        index => "%{[@metadata][index_name]}"
+      }
+    }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: logstash
+  namespace: fund-my-cause
+  labels:
+    app: logstash
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: logstash
+  template:
+    metadata:
+      labels:
+        app: logstash
+    spec:
+      serviceAccountName: logstash-sa
+      containers:
+      - name: logstash
+        image: docker.elastic.co/logstash/logstash:8.0.0
+        ports:
+        - containerPort: 5000
+          name: tcp
+        - containerPort: 5000
+          protocol: UDP
+          name: udp
+        volumeMounts:
+        - name: config
+          mountPath: /usr/share/logstash/pipeline
+        env:
+        - name: LS_JAVA_OPTS
+          value: "-Xmx256m -Xms256m"
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "250m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        livenessProbe:
+          tcpSocket:
+            port: 5000
+          initialDelaySeconds: 30
+          periodSeconds: 10
+      volumes:
+      - name: config
+        configMap:
+          name: logstash-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: logstash
+  namespace: fund-my-cause
+  labels:
+    app: logstash
+spec:
+  type: ClusterIP
+  ports:
+  - port: 5000
+    targetPort: 5000
+    protocol: TCP
+    name: tcp
+  - port: 5000
+    targetPort: 5000
+    protocol: UDP
+    name: udp
+  selector:
+    app: logstash
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: logstash-sa
+  namespace: fund-my-cause
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: logstash-role
+rules:
+- apiGroups: [""]
+  resources: ["pods", "namespaces"]
+  verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: logstash-role-binding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: logstash-role
+subjects:
+- kind: ServiceAccount
+  name: logstash-sa
+  namespace: fund-my-cause

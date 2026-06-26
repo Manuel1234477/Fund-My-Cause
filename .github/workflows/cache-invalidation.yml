@@ -1,0 +1,38 @@
+name: Cache Invalidation
+
+on:
+  workflow_dispatch:
+    inputs:
+      surrogate_keys:
+        description: "Surrogate keys to invalidate (comma-separated)"
+        required: true
+        default: "campaigns"
+      environment:
+        description: "Deployment environment"
+        required: true
+        default: "staging"
+        type: choice
+        options:
+          - staging
+          - production
+
+jobs:
+  invalidate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Purge cache
+        run: |
+          curl -s -X POST "${{ vars.CACHE_API_ENDPOINT }}/api/cache" \
+            -H "Content-Type: application/json" \
+            -H "x-api-key: ${{ secrets.CACHE_API_KEY }}" \
+            -d '{
+              "surrogateKeys": ${{ toJSON(github.event.inputs.surrogate_keys.split(',')) }}
+            }'

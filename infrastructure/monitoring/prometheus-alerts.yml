@@ -1,0 +1,220 @@
+groups:
+  - name: application_alerts
+    interval: 30s
+    rules:
+      # Application Performance Alerts
+      - alert: HighErrorRate
+        expr: rate(http_errors_total[5m]) / rate(http_requests_total[5m]) > 0.05
+        for: 5m
+        labels:
+          severity: critical
+          category: application
+        annotations:
+          summary: "High error rate detected"
+          description: "Error rate is {{ $value | humanizePercentage }} for the past 5 minutes"
+
+      - alert: HighLatency
+        expr: histogram_quantile(0.95, rate(http_request_duration_seconds_bucket[5m])) > 1
+        for: 5m
+        labels:
+          severity: warning
+          category: application
+        annotations:
+          summary: "High request latency detected"
+          description: "P95 latency is {{ $value }}s, threshold is 1s"
+
+      - alert: ServiceDown
+        expr: up{job="fund-my-cause-app"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          category: application
+        annotations:
+          summary: "Service is down"
+          description: "Fund My Cause service has been unreachable for 1 minute"
+
+      - alert: DatabaseConnectionPoolExhausted
+        expr: db_connection_pool_available < 5
+        for: 2m
+        labels:
+          severity: warning
+          category: application
+        annotations:
+          summary: "Database connection pool exhausted"
+          description: "Only {{ $value }} connections available in the pool"
+
+      - alert: CacheHitRateLow
+        expr: rate(cache_hits_total[5m]) / (rate(cache_hits_total[5m]) + rate(cache_misses_total[5m])) < 0.7
+        for: 10m
+        labels:
+          severity: info
+          category: application
+        annotations:
+          summary: "Cache hit rate is low"
+          description: "Cache hit rate is {{ $value | humanizePercentage }}"
+
+  - name: infrastructure_alerts
+    interval: 30s
+    rules:
+      # Infrastructure Alerts
+      - alert: HighCPUUsage
+        expr: 100 - (avg by (instance) (irate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 80
+        for: 5m
+        labels:
+          severity: warning
+          category: infrastructure
+        annotations:
+          summary: "High CPU usage"
+          description: "CPU usage is {{ $value | humanize }}% on {{ $labels.instance }}"
+
+      - alert: HighMemoryUsage
+        expr: (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100 > 85
+        for: 5m
+        labels:
+          severity: warning
+          category: infrastructure
+        annotations:
+          summary: "High memory usage"
+          description: "Memory usage is {{ $value | humanize }}% on {{ $labels.instance }}"
+
+      - alert: HighDiskUsage
+        expr: (1 - (node_filesystem_avail_bytes{fstype!~"tmpfs|fuse.lowerfs|squashfs|vfat"} / node_filesystem_size_bytes)) * 100 > 85
+        for: 5m
+        labels:
+          severity: warning
+          category: infrastructure
+        annotations:
+          summary: "High disk usage"
+          description: "Disk usage is {{ $value | humanize }}% on {{ $labels.instance }}"
+
+      - alert: ServiceNotRunning
+        expr: up == 0
+        for: 2m
+        labels:
+          severity: critical
+          category: infrastructure
+        annotations:
+          summary: "Service is not running"
+          description: "{{ $labels.job }} on {{ $labels.instance }} is down"
+
+  - name: defi_alerts
+    interval: 30s
+    rules:
+      # DeFi-Specific Alerts
+      - alert: TVLDrop
+        expr: (tvl_total[1h] - tvl_total) / tvl_total > 0.05
+        for: 5m
+        labels:
+          severity: warning
+          category: defi
+        annotations:
+          summary: "TVL has dropped significantly"
+          description: "TVL dropped by {{ $value | humanizePercentage }} in the last hour"
+
+      - alert: TransactionFailureRateHigh
+        expr: rate(blockchain_transaction_failures_total[5m]) / rate(blockchain_transactions_total[5m]) > 0.1
+        for: 5m
+        labels:
+          severity: critical
+          category: defi
+        annotations:
+          summary: "High blockchain transaction failure rate"
+          description: "{{ $value | humanizePercentage }} of transactions are failing"
+
+      - alert: GasPriceSpike
+        expr: gas_price_gwei > 200
+        for: 5m
+        labels:
+          severity: info
+          category: defi
+        annotations:
+          summary: "Gas price spike detected"
+          description: "Current gas price is {{ $value }} Gwei"
+
+      - alert: SmartContractErrors
+        expr: rate(smart_contract_calls_failed_total[5m]) > 0.01
+        for: 5m
+        labels:
+          severity: critical
+          category: defi
+        annotations:
+          summary: "Smart contract interaction errors detected"
+          description: "Error rate is {{ $value }} errors/sec"
+
+  - name: business_alerts
+    interval: 30s
+    rules:
+      # Business Alerts
+      - alert: LowCampaignSuccessRate
+        expr: (campaign_success_total / campaign_total_created) < 0.7
+        for: 30m
+        labels:
+          severity: warning
+          category: business
+        annotations:
+          summary: "Campaign success rate is low"
+          description: "Success rate is {{ $value | humanizePercentage }}, target is 70%"
+
+      - alert: RevenueShortfall
+        expr: (revenue_total / revenue_target) < 0.8
+        for: 2h
+        labels:
+          severity: warning
+          category: business
+        annotations:
+          summary: "Revenue is below target"
+          description: "Current revenue is {{ $value | humanizePercentage }} of daily target"
+
+      - alert: LowUserSignupRate
+        expr: rate(new_user_signups_total[1h]) < user_signup_rate_target
+        for: 2h
+        labels:
+          severity: info
+          category: business
+        annotations:
+          summary: "User signup rate below daily target"
+          description: "Current signup rate is {{ $value }} per hour"
+
+      - alert: ZeroDonationsInPeriod
+        expr: rate(campaign_donations_total[1h]) == 0
+        for: 2h
+        labels:
+          severity: warning
+          category: business
+        annotations:
+          summary: "No donations in the last hour"
+          description: "Donation rate has dropped to zero"
+
+  - name: prometheus_alerts
+    interval: 30s
+    rules:
+      # Prometheus Internal Alerts
+      - alert: PrometheusConfigReloadFailed
+        expr: prometheus_config_last_reload_successful == 0
+        for: 5m
+        labels:
+          severity: critical
+          category: observability
+        annotations:
+          summary: "Prometheus configuration reload failed"
+          description: "Prometheus failed to reload its configuration"
+
+      - alert: PrometheusRuleEvaluationFailure
+        expr: increase(prometheus_rule_evaluation_failures_total[5m]) > 0
+        for: 5m
+        labels:
+          severity: warning
+          category: observability
+        annotations:
+          summary: "Prometheus rule evaluation failure"
+          description: "Prometheus failed to evaluate {{ $value }} rules"
+
+      - alert: PrometheusHighMemoryUsage
+        expr: (process_resident_memory_bytes / 1e9) > 1.5
+        for: 5m
+        labels:
+          severity: warning
+          category: observability
+        annotations:
+          summary: "Prometheus high memory usage"
+          description: "Prometheus is using {{ $value }} GB of memory"

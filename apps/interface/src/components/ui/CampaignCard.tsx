@@ -3,7 +3,7 @@
 import React from "react";
 import Image from "next/image";
 import { motion } from "framer-motion";
-import { Bookmark, GitCompare } from "lucide-react";
+import { Bookmark, GitCompare, Share2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ProgressBar } from "@/components/ui/ProgressBar";
 import { CountdownTimer } from "@/components/ui/CountdownTimer";
@@ -11,10 +11,13 @@ import { formatXlm } from "@/lib/price";
 import type { Campaign } from "@/types/campaign";
 import { useComparison } from "@/context/ComparisonContext";
 import { useBookmarks } from "@/context/BookmarkContext";
+import { getCategoryBySlug } from "@/lib/categories";
+import { useTranslations } from "next-intl";
 
 export interface CampaignCardProps {
   campaign: Campaign;
   onPledge?: (id: string) => void;
+  onShare?: (id: string, title: string) => void;
   /** Pass null when price fetch failed — USD amounts are hidden */
   xlmPrice?: number | null;
   /** Stagger index for slide-up animation on listing page */
@@ -48,7 +51,7 @@ function Highlight({ text, query }: { text: string; query?: string }) {
   );
 }
 
-function StatusBadge({ status }: { status: "funded" | "ended" }) {
+function StatusBadge({ status, label }: { status: "funded" | "ended"; label: string }) {
   return (
     <span
       className={cn(
@@ -58,7 +61,17 @@ function StatusBadge({ status }: { status: "funded" | "ended" }) {
           : "bg-[var(--color-surface-elevated)]/90 text-[var(--color-text-secondary)]",
       )}
     >
-      {status === "funded" ? "Funded" : "Ended"}
+      {label}
+    </span>
+  );
+}
+
+function CategoryBadge({ slug }: { slug?: string }) {
+  const cat = getCategoryBySlug(slug);
+  if (!cat) return null;
+  return (
+    <span className="absolute top-3 right-3 flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-black/60 text-white backdrop-blur-sm">
+      {cat.emoji} {cat.label}
     </span>
   );
 }
@@ -66,10 +79,12 @@ function StatusBadge({ status }: { status: "funded" | "ended" }) {
 export function CampaignCard({
   campaign,
   onPledge,
+  onShare,
   xlmPrice = null,
   index = 0,
   query,
 }: CampaignCardProps) {
+  const t = useTranslations("campaignCard");
   const progress =
     campaign.goal > 0 ? (campaign.raised / campaign.goal) * 100 : 0;
   const isFunded = progress >= 100;
@@ -94,43 +109,58 @@ export function CampaignCard({
       className="ds-card"
     >
       <div className="relative">
-        <div className="relative w-full h-48">
+        <div className="relative w-full h-48 sm:h-48">
           <Image
             src={campaign.image}
             alt={`${campaign.title} - campaign header image`}
             fill
             className="object-cover"
-            sizes="(max-width: 768px) 100vw, 33vw"
+            sizes="(max-width: 640px) 100vw, (max-width: 768px) 50vw, 33vw"
           />
         </div>
-        {isFunded && <StatusBadge status="funded" />}
-        {isEnded && <StatusBadge status="ended" />}
+        {isFunded && <StatusBadge status="funded" label={t("funded")} />}
+        {isEnded && <StatusBadge status="ended" label={t("ended")} />}
         {campaign.videoUrl && (
           <span className="absolute bottom-2 left-2 flex items-center gap-1 bg-black/70 text-white text-xs px-2 py-0.5 rounded-full">
-            ▶ Video
+            ▶ {t("video")}
           </span>
         )}
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            toggleBookmark(campaign.id);
-          }}
-          aria-label={bookmarked ? "Remove bookmark" : "Bookmark campaign"}
-          className="absolute top-3 right-3 p-1.5 rounded-full bg-[var(--color-surface)]/80 hover:bg-[var(--color-surface-elevated)] transition"
-        >
-          <Bookmark
-            size={15}
-            className={cn(
-              bookmarked
-                ? "fill-[var(--color-brand)] text-[var(--color-brand)]"
-                : "text-[var(--color-text-muted)]",
-            )}
-          />
-        </button>
+        <CategoryBadge slug={campaign.category} />
+        <div className="absolute top-10 right-3 flex gap-1">
+          {onShare && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onShare(campaign.id, campaign.title);
+              }}
+              aria-label={t("shareCampaign")}
+              className="p-2 rounded-full bg-[var(--color-surface)]/80 hover:bg-[var(--color-surface-elevated)] transition touch-manipulation min-w-[44px] min-h-[44px] flex items-center justify-center"
+            >
+              <Share2 size={15} className="text-[var(--color-text-muted)]" />
+            </button>
+          )}
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              toggleBookmark(campaign.id);
+            }}
+            aria-label={bookmarked ? t("removeBookmark") : t("bookmarkCampaign")}
+            className="p-2 rounded-full bg-[var(--color-surface)]/80 hover:bg-[var(--color-surface-elevated)] transition touch-manipulation min-w-[44px] min-h-[44px] flex items-center justify-center"
+          >
+            <Bookmark
+              size={15}
+              className={cn(
+                bookmarked
+                  ? "fill-[var(--color-brand)] text-[var(--color-brand)]"
+                  : "text-[var(--color-text-muted)]",
+              )}
+            />
+          </button>
+        </div>
       </div>
 
-      <div className="p-5 space-y-3">
-        <h2 className="text-lg font-semibold text-[var(--color-text-primary)]">
+      <div className="p-4 sm:p-5 space-y-3">
+        <h2 className="text-base sm:text-lg font-semibold text-[var(--color-text-primary)]">
           <Highlight text={campaign.title} query={query} />
         </h2>
         <p className="text-[var(--color-text-secondary)] text-sm line-clamp-2">
@@ -138,13 +168,13 @@ export function CampaignCard({
         </p>
         <ProgressBar progress={progress} />
         <div className="flex justify-between text-sm text-[var(--color-text-secondary)]">
-          <span>{formatXlm(campaign.raised, xlmPrice)} raised</span>
-          <span>{formatXlm(campaign.goal, xlmPrice)} goal</span>
+          <span>{formatXlm(campaign.raised, xlmPrice)} {t("raised")}</span>
+          <span>{formatXlm(campaign.goal, xlmPrice)} {t("goal")}</span>
         </div>
         <CountdownTimer deadline={campaign.deadline} />
         <label
           className={cn(
-            "flex items-center gap-2 text-xs cursor-pointer select-none",
+            "flex items-center gap-2 text-xs cursor-pointer select-none touch-manipulation",
             compareDisabled && "opacity-40 cursor-not-allowed",
           )}
         >
@@ -153,28 +183,28 @@ export function CampaignCard({
             checked={compared}
             disabled={compareDisabled}
             onChange={() => toggleCompare(campaign.id)}
-            className="accent-[var(--color-brand)] w-3.5 h-3.5"
+            className="accent-[var(--color-brand)] w-4 h-4"
           />
           <GitCompare size={12} className="text-[var(--color-text-muted)]" />
-          <span className="text-[var(--color-text-muted)]">Compare</span>
+          <span className="text-[var(--color-text-muted)]">{t("compare")}</span>
         </label>
         <button
-          className="ds-btn-primary w-full py-2 disabled:opacity-50 disabled:cursor-not-allowed"
+          className="ds-btn-primary w-full py-3 disabled:opacity-50 disabled:cursor-not-allowed touch-manipulation"
           onClick={() => onPledge?.(campaign.id)}
           disabled={isDisabled}
           aria-label={
             isFunded
-              ? `${campaign.title} — successfully funded`
+              ? t("fundedAriaLabel", { title: campaign.title })
               : isEnded
-                ? `${campaign.title} — campaign ended`
-                : `Pledge to ${campaign.title}`
+                ? t("endedAriaLabel", { title: campaign.title })
+                : t("pledgeAriaLabel", { title: campaign.title })
           }
         >
           {isFunded
-            ? "Successfully Funded"
+            ? t("successfullyFunded")
             : isEnded
-              ? "Campaign Ended"
-              : "Pledge Now"}
+              ? t("campaignEnded")
+              : t("pledgeNow")}
         </button>
       </div>
     </motion.div>

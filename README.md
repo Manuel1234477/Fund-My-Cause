@@ -9,6 +9,12 @@ A decentralized crowdfunding platform built on the [Stellar](https://stellar.org
 
 ---
 
+## Roadmap
+
+Check out our public roadmap to see what's coming next!
+
+> [View the Roadmap](./docs/roadmap.md) — see our planned milestones and features.
+
 ## Architecture
 
 ![System Architecture](./docs/assets/architecture.svg)
@@ -262,6 +268,45 @@ npm run test:coverage
 ```
 
 Thresholds are configured in `apps/interface/jest.config.js` under `coverageThreshold.global`.
+
+---
+
+## Security
+
+Fund-My-Cause takes security seriously. For comprehensive security information, see:
+
+- **[Security Guidelines](./docs/security-guidelines.md)** — Overview of security practices and policies
+- **[Security Model & Threat Analysis](./docs/security-model.md)** — Detailed threat model and mitigation strategies
+- **[Security Checklist](./docs/security-checklist.md)** — Pre-deployment, deployment, and operational checklists
+- **[Incident Response Procedures](./docs/incident-response.md)** — Procedures for detecting and responding to security incidents
+- **[Security Best Practices](./docs/security-best-practices.md)** — User security guidance and wallet security
+- **[SECURITY.md](./SECURITY.md)** — Vulnerability reporting policy and supported versions
+
+### Reporting Security Vulnerabilities
+
+**Please do not open a public GitHub issue for security vulnerabilities.**
+
+Report vulnerabilities privately via [GitHub Security Advisories](https://github.com/Fund-My-Cause/Fund-My-Cause/security/advisories/new) or email [security@fund-my-cause.org](mailto:security@fund-my-cause.org).
+
+Include:
+- A clear description of the vulnerability
+- Steps to reproduce or a proof-of-concept
+- Affected component (smart contract, frontend, CI/CD)
+- Potential impact assessment
+
+We follow [coordinated disclosure](https://en.wikipedia.org/wiki/Coordinated_vulnerability_disclosure) and will credit researchers in release notes unless anonymity is requested.
+
+---
+
+## Developer Resources
+
+| Resource | Description |
+|----------|-------------|
+| [docs/api/](./docs/api/README.md) | Full contract API reference — every function, type, event, and error code |
+| [docs/tutorials/](./docs/tutorials/README.md) | Step-by-step guides: getting started, contributing, dashboards, matching, saved searches |
+| [sdks/js/](./sdks/js/README.md) | TypeScript SDK — typed client for all contract operations |
+| [playground/](./playground/README.md) | Interactive testnet playground — query and invoke contracts from the CLI or REST Client |
+| [examples/](./examples/README.md) | Runnable integration examples (Node.js + React) |
 
 ---
 

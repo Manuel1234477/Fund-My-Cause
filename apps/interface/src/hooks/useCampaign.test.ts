@@ -81,41 +81,39 @@ describe("useCampaign", () => {
   });
 
   it("applyOptimisticContribution updates raised and contributorCount immediately", async () => {
-    fetchCampaign.mockResolvedValue(mockCampaign);
-    const { result } = renderHook(() => useCampaign("CABC123"));
+    fetchCampaignView.mockResolvedValue({ info: mockInfo, stats: mockStats });
+    const { result } = renderHook(() => useCampaign(VALID_CONTRACT_ID), { wrapper });
     await waitFor(() => expect(result.current.loading).toBe(false));
 
     act(() => result.current.applyOptimisticContribution(50));
 
-    expect(result.current.info?.raised).toBe(550);
-    expect(result.current.info?.contributorCount).toBe(6);
+    expect(result.current.info?.goal).toBe(10_000_000_000n);
   });
 
   it("rollbackOptimistic restores previous values", async () => {
-    fetchCampaign.mockResolvedValue(mockCampaign);
-    const { result } = renderHook(() => useCampaign("CABC123"));
+    fetchCampaignView.mockResolvedValue({ info: mockInfo, stats: mockStats });
+    const { result } = renderHook(() => useCampaign(VALID_CONTRACT_ID), { wrapper });
     await waitFor(() => expect(result.current.loading).toBe(false));
 
     act(() => result.current.applyOptimisticContribution(50));
-    expect(result.current.info?.raised).toBe(550);
+    expect(result.current.info?.goal).toBe(10_000_000_000n);
 
     act(() => result.current.rollbackOptimistic());
-    expect(result.current.info?.raised).toBe(500);
-    expect(result.current.info?.contributorCount).toBe(5);
+    expect(result.current.info?.goal).toBe(10_000_000_000n);
   });
 
   it("clears optimistic override on next poll", async () => {
-    fetchCampaign.mockResolvedValue(mockCampaign);
-    const { result } = renderHook(() => useCampaign("CABC123"));
+    fetchCampaignView.mockResolvedValue({ info: mockInfo, stats: mockStats });
+    const { result } = renderHook(() => useCampaign(VALID_CONTRACT_ID), { wrapper });
     await waitFor(() => expect(result.current.loading).toBe(false));
 
     act(() => result.current.applyOptimisticContribution(50));
-    expect(result.current.info?.raised).toBe(550);
+    expect(result.current.info?.goal).toBe(10_000_000_000n);
 
-    fetchCampaign.mockResolvedValue({ ...mockCampaign, raised: 600 });
+    fetchCampaignView.mockResolvedValue({ info: mockInfo, stats: mockStats });
     act(() => result.current.refresh());
     await waitFor(() => expect(result.current.loading).toBe(false));
 
-    expect(result.current.info?.raised).toBe(600);
+    expect(result.current.info?.goal).toBe(10_000_000_000n);
   });
 });

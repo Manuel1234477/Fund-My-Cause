@@ -1,0 +1,157 @@
+{
+  "dashboard": {
+    "title": "Business Metrics",
+    "tags": ["business", "campaigns", "fund-my-cause"],
+    "timezone": "UTC",
+    "panels": [
+      {
+        "id": 1,
+        "title": "Total Value Locked (TVL)",
+        "type": "stat",
+        "gridPos": {
+          "h": 8,
+          "w": 6,
+          "x": 0,
+          "y": 0
+        },
+        "targets": [
+          {
+            "expr": "tvl_total",
+            "legendFormat": "TVL"
+          }
+        ]
+      },
+      {
+        "id": 2,
+        "title": "Active Campaigns",
+        "type": "stat",
+        "gridPos": {
+          "h": 8,
+          "w": 6,
+          "x": 6,
+          "y": 0
+        },
+        "targets": [
+          {
+            "expr": "campaign_total_created",
+            "legendFormat": "Total Campaigns"
+          }
+        ]
+      },
+      {
+        "id": 3,
+        "title": "Campaign Success Rate (%)",
+        "type": "gauge",
+        "gridPos": {
+          "h": 8,
+          "w": 6,
+          "x": 12,
+          "y": 0
+        },
+        "targets": [
+          {
+            "expr": "(campaign_success_total / campaign_total_created) * 100",
+            "legendFormat": "Success Rate"
+          }
+        ]
+      },
+      {
+        "id": 4,
+        "title": "Total Contributors",
+        "type": "stat",
+        "gridPos": {
+          "h": 8,
+          "w": 6,
+          "x": 18,
+          "y": 0
+        },
+        "targets": [
+          {
+            "expr": "new_user_signups_total",
+            "legendFormat": "Contributors"
+          }
+        ]
+      },
+      {
+        "id": 5,
+        "title": "Hourly Donation Rate",
+        "type": "graph",
+        "gridPos": {
+          "h": 8,
+          "w": 12,
+          "x": 0,
+          "y": 8
+        },
+        "targets": [
+          {
+            "expr": "rate(campaign_donations_total[1h])",
+            "legendFormat": "Donations/hour"
+          }
+        ]
+      },
+      {
+        "id": 6,
+        "title": "Daily Revenue by Campaign",
+        "type": "barchart",
+        "gridPos": {
+          "h": 8,
+          "w": 12,
+          "x": 12,
+          "y": 8
+        },
+        "targets": [
+          {
+            "expr": "sum by (campaign) (campaign_donations_total)",
+            "legendFormat": "{{campaign}}"
+          }
+        ]
+      },
+      {
+        "id": 7,
+        "title": "Blockchain Transactions",
+        "type": "graph",
+        "gridPos": {
+          "h": 8,
+          "w": 12,
+          "x": 0,
+          "y": 16
+        },
+        "targets": [
+          {
+            "expr": "rate(blockchain_transactions_total[5m])",
+            "legendFormat": "Successful"
+          },
+          {
+            "expr": "rate(blockchain_transaction_failures_total[5m])",
+            "legendFormat": "Failed"
+          }
+        ]
+      },
+      {
+        "id": 8,
+        "title": "Smart Contract Errors",
+        "type": "graph",
+        "gridPos": {
+          "h": 8,
+          "w": 12,
+          "x": 12,
+          "y": 16
+        },
+        "targets": [
+          {
+            "expr": "rate(smart_contract_calls_failed_total[5m])",
+            "legendFormat": "Error Rate"
+          }
+        ]
+      }
+    ],
+    "refresh": "10s",
+    "schemaVersion": 16,
+    "style": "dark",
+    "time": {
+      "from": "now-7d",
+      "to": "now"
+    }
+  },
+  "overwrite": true
+}

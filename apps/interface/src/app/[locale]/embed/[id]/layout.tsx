@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { ReactQueryProvider } from "@/context/ReactQueryProvider";
-import "../../globals.css";
+import "@/app/globals.css";
 
 export const metadata: Metadata = {
   title: "Fund-My-Cause — Campaign Widget",

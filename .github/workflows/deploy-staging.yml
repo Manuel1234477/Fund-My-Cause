@@ -101,6 +101,20 @@ jobs:
           NEXT_PUBLIC_HORIZON_URL: https://horizon-testnet.stellar.org
         run: npm run build
 
+      - name: Invalidate CDN cache
+        if: vars.CACHE_API_ENDPOINT != ''
+        env:
+          CACHE_API_ENDPOINT: ${{ vars.CACHE_API_ENDPOINT }}
+          CACHE_API_KEY: ${{ secrets.CACHE_API_KEY }}
+          CONTRACT_ID: ${{ needs.deploy-contracts.outputs.contract_id }}
+        run: |
+          curl -s -X POST "${CACHE_API_ENDPOINT}/api/cache" \
+            -H "Content-Type: application/json" \
+            ${CACHE_API_KEY:+-H "x-api-key: $CACHE_API_KEY"} \
+            -d '{
+              "surrogateKeys": ["campaigns", "campaign:'"$CONTRACT_ID"'"]
+            }'
+
       - name: Write deployment summary
         env:
           CONTRACT_ID: ${{ needs.deploy-contracts.outputs.contract_id }}

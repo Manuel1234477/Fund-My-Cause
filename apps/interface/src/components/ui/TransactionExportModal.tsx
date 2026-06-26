@@ -9,19 +9,23 @@ import {
   Receipt,
   Calendar,
   Loader2,
+  Braces,
 } from "lucide-react";
 import {
   exportCsv,
   exportTaxReport,
   exportPdf,
+  exportJson,
   filterByDateRange,
+  ALL_COLUMNS,
+  type ExportColumn,
   type ExportRecord,
   type DateRange,
 } from "@/lib/exportTransactions";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-type ExportFormat = "csv" | "pdf" | "tax";
+type ExportFormat = "csv" | "json" | "pdf" | "tax";
 
 interface TransactionExportModalProps {
   records: ExportRecord[];
@@ -45,6 +49,12 @@ const FORMAT_OPTIONS: {
     icon: <FileSpreadsheet size={18} />,
   },
   {
+    id: "json",
+    label: "JSON",
+    description: "Machine-readable JSON array. Useful for integrations.",
+    icon: <Braces size={18} />,
+  },
+  {
     id: "pdf",
     label: "PDF",
     description: "Print-ready report with summary. Opens browser print dialog.",
@@ -58,6 +68,17 @@ const FORMAT_OPTIONS: {
     icon: <Receipt size={18} />,
   },
 ];
+
+const COLUMN_LABELS: Record<ExportColumn, string> = {
+  date: "Date",
+  time: "Time (UTC)",
+  txHash: "Tx Hash",
+  contributor: "Contributor",
+  campaign: "Campaign",
+  campaignId: "Campaign ID",
+  amountXlm: "Amount (XLM)",
+  status: "Status",
+};
 
 // ── Input helpers ─────────────────────────────────────────────────────────────
 
@@ -77,6 +98,9 @@ export function TransactionExportModal({
   const [format, setFormat] = useState<ExportFormat>("csv");
   const [dateRange, setDateRange] = useState<DateRange>({ from: "", to: "" });
   const [exporting, setExporting] = useState(false);
+  const [selectedColumns, setSelectedColumns] = useState<Set<ExportColumn>>(
+    new Set(ALL_COLUMNS),
+  );
 
   const filteredRecords = useMemo(
     () => filterByDateRange(records, dateRange),
@@ -85,15 +109,31 @@ export function TransactionExportModal({
 
   const slug = campaignTitle.toLowerCase().replace(/\s+/g, "-").slice(0, 30);
   const dateTag = new Date().toISOString().slice(0, 10);
+  const columns = ALL_COLUMNS.filter((c) => selectedColumns.has(c));
+
+  const toggleColumn = (col: ExportColumn) => {
+    setSelectedColumns((prev) => {
+      const next = new Set(prev);
+      if (next.has(col)) {
+        if (next.size > 1) next.delete(col); // keep at least one
+      } else {
+        next.add(col);
+      }
+      return next;
+    });
+  };
+
+  const showColumnPicker = format === "csv" || format === "json";
 
   const handleExport = async () => {
     if (filteredRecords.length === 0) return;
     setExporting(true);
-    // Small delay so the button state renders before the (potentially blocking) export
     await new Promise((r) => setTimeout(r, 50));
     try {
       if (format === "csv") {
-        exportCsv(filteredRecords, `${slug}-transactions-${dateTag}.csv`);
+        exportCsv(filteredRecords, `${slug}-transactions-${dateTag}.csv`, columns);
+      } else if (format === "json") {
+        exportJson(filteredRecords, `${slug}-transactions-${dateTag}.json`, columns);
       } else if (format === "tax") {
         exportTaxReport(filteredRecords, `${slug}-tax-report-${dateTag}.csv`);
       } else {
@@ -122,9 +162,9 @@ export function TransactionExportModal({
       />
 
       {/* Panel */}
-      <div className="relative z-10 w-full max-w-md bg-white dark:bg-gray-900 rounded-2xl shadow-2xl border border-gray-200 dark:border-gray-800 overflow-hidden">
+      <div className="relative z-10 w-full max-w-md bg-white dark:bg-gray-900 rounded-2xl shadow-2xl border border-gray-200 dark:border-gray-800 overflow-hidden max-h-[90vh] flex flex-col">
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-gray-800">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-gray-800 shrink-0">
           <div className="flex items-center gap-2">
             <Download
               size={18}
@@ -147,7 +187,7 @@ export function TransactionExportModal({
           </button>
         </div>
 
-        <div className="px-6 py-5 space-y-5">
+        <div className="px-6 py-5 space-y-5 overflow-y-auto">
           {/* Format selector */}
           <fieldset>
             <legend className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-2">
@@ -189,6 +229,35 @@ export function TransactionExportModal({
               ))}
             </div>
           </fieldset>
+
+          {/* Column selection (CSV & JSON only) */}
+          {showColumnPicker && (
+            <fieldset>
+              <legend className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-2">
+                Columns
+              </legend>
+              <div className="flex flex-wrap gap-2">
+                {ALL_COLUMNS.map((col) => (
+                  <label
+                    key={col}
+                    className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-xs cursor-pointer transition ${
+                      selectedColumns.has(col)
+                        ? "border-indigo-500 bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300"
+                        : "border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:border-gray-300"
+                    }`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={selectedColumns.has(col)}
+                      onChange={() => toggleColumn(col)}
+                      className="accent-indigo-600 w-3 h-3"
+                    />
+                    {COLUMN_LABELS[col]}
+                  </label>
+                ))}
+              </div>
+            </fieldset>
+          )}
 
           {/* Date range filter */}
           <fieldset>
@@ -261,7 +330,7 @@ export function TransactionExportModal({
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/50">
+        <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/50 shrink-0">
           <button
             onClick={onClose}
             className="px-4 py-2 rounded-xl text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800 transition"

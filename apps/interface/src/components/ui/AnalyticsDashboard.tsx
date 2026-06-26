@@ -1,15 +1,17 @@
 "use client";
 
 import React, { useMemo } from "react";
-import { Download, TrendingUp, Users, Target, Eye } from "lucide-react";
-import { CampaignData } from "@/lib/soroban";
+import { TrendingUp, Users, Target, Eye } from "lucide-react";
+import { CampaignData } from "@/types/soroban";
+import { LineChart } from "./LineChart";
+import { PieChart } from "./PieChart";
+import { AnalyticsExport } from "./AnalyticsExport";
+import { PredictiveAnalytics } from "./PredictiveAnalytics";
+import { useRealTimeAnalytics } from "@/hooks/useRealTimeAnalytics";
 
 interface Props {
   campaigns: CampaignData[];
-}
-
-function stroopsToXlm(n: bigint) {
-  return Number(n) / 10_000_000;
+  timeRange?: "7d" | "30d" | "90d" | "all";
 }
 
 function StatCard({ label, value, icon }: { label: string; value: string; icon: React.ReactNode }) {
@@ -41,42 +43,50 @@ function ContributionBar({ label, value, max }: { label: string; value: number; 
   );
 }
 
-export function AnalyticsDashboard({ campaigns }: Props) {
+export function AnalyticsDashboard({ campaigns, timeRange = "all" }: Props) {
+  const filteredCampaigns = useMemo(() => {
+    if (timeRange === "all") return campaigns;
+
+    const now = Date.now();
+    const cutoffDate = new Date();
+
+    switch (timeRange) {
+      case "7d":
+        cutoffDate.setDate(cutoffDate.getDate() - 7);
+        break;
+      case "30d":
+        cutoffDate.setDate(cutoffDate.getDate() - 30);
+        break;
+      case "90d":
+        cutoffDate.setDate(cutoffDate.getDate() - 90);
+        break;
+      default:
+        return campaigns;
+    }
+
+    return campaigns.filter((c) => {
+      const campaignDate = new Date(c.deadline).getTime();
+      return campaignDate >= cutoffDate.getTime() && campaignDate <= now;
+    });
+  }, [campaigns, timeRange]);
+
+  const { analytics: realtimeCampaigns, connected, error, lastUpdated } = useRealTimeAnalytics(filteredCampaigns);
+  const displayCampaigns = realtimeCampaigns.length > 0 ? realtimeCampaigns : filteredCampaigns;
+
   const stats = useMemo(() => {
-    const totalRaised = campaigns.reduce((s, c) => s + stroopsToXlm(c.totalRaised), 0);
-    const totalGoal = campaigns.reduce((s, c) => s + stroopsToXlm(c.goal), 0);
-    const active = campaigns.filter((c) => c.status === "Active").length;
-    const successful = campaigns.filter((c) => c.status === "Successful").length;
+    const totalRaised = displayCampaigns.reduce((s, c) => s + c.raised, 0);
+    const totalGoal = displayCampaigns.reduce((s, c) => s + c.goal, 0);
+    const active = displayCampaigns.filter((c) => c.status === "Active").length;
+    const successful = displayCampaigns.filter((c) => c.status === "Successful").length;
     return { totalRaised, totalGoal, active, successful };
-  }, [campaigns]);
+  }, [displayCampaigns]);
 
   const maxRaised = useMemo(
-    () => Math.max(...campaigns.map((c) => stroopsToXlm(c.totalRaised)), 1),
-    [campaigns]
+    () => Math.max(...displayCampaigns.map((c) => c.raised), 1),
+    [displayCampaigns]
   );
 
-  const exportCsv = () => {
-    const header = "Title,Status,Raised (XLM),Goal (XLM),Deadline,Contract ID";
-    const rows = campaigns.map((c) =>
-      [
-        `"${c.title.replace(/"/g, '""')}"`,
-        c.status,
-        stroopsToXlm(c.totalRaised).toFixed(2),
-        stroopsToXlm(c.goal).toFixed(2),
-        new Date(Number(c.deadline) * 1000).toISOString().split("T")[0],
-        c.contractId,
-      ].join(",")
-    );
-    const blob = new Blob([[header, ...rows].join("\n")], { type: "text/csv" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "campaigns-analytics.csv";
-    a.click();
-    URL.revokeObjectURL(url);
-  };
-
-  if (campaigns.length === 0) {
+  if (displayCampaigns.length === 0) {
     return (
       <div className="text-center py-16 text-gray-500">
         <TrendingUp size={32} className="mx-auto mb-3 opacity-40" />
@@ -99,15 +109,23 @@ export function AnalyticsDashboard({ campaigns }: Props) {
         <StatCard label="Avg. Conversion" value={`${conversionRate}%`} icon={<Users size={18} />} />
       </div>
 
+      {/* New chart components */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <LineChart campaigns={displayCampaigns} />
+        <PieChart campaigns={displayCampaigns} />
+      </div>
+
+      <PredictiveAnalytics campaigns={displayCampaigns} connected={connected} lastUpdated={lastUpdated} error={error} />
+
       {/* Contribution timeline (per campaign bar chart) */}
       <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5 space-y-4">
         <h3 className="text-sm font-semibold text-gray-300">Raised per Campaign</h3>
         <div className="space-y-3">
-          {campaigns.map((c) => (
+          {displayCampaigns.map((c) => (
             <ContributionBar
               key={c.contractId}
               label={c.title}
-              value={stroopsToXlm(c.totalRaised)}
+              value={c.raised}
               max={maxRaised}
             />
           ))}
@@ -119,9 +137,9 @@ export function AnalyticsDashboard({ campaigns }: Props) {
         <h3 className="text-sm font-semibold text-gray-300">Conversion Funnel</h3>
         <div className="flex flex-col gap-2">
           {[
-            { label: "Campaigns Created", value: campaigns.length, pct: 100 },
-            { label: "Active", value: stats.active, pct: campaigns.length > 0 ? (stats.active / campaigns.length) * 100 : 0 },
-            { label: "Reached Goal", value: stats.successful, pct: campaigns.length > 0 ? (stats.successful / campaigns.length) * 100 : 0 },
+            { label: "Campaigns Created", value: filteredCampaigns.length, pct: 100 },
+            { label: "Active", value: stats.active, pct: filteredCampaigns.length > 0 ? (stats.active / filteredCampaigns.length) * 100 : 0 },
+            { label: "Reached Goal", value: stats.successful, pct: filteredCampaigns.length > 0 ? (stats.successful / filteredCampaigns.length) * 100 : 0 },
           ].map((step) => (
             <div key={step.label} className="flex items-center gap-3 text-sm">
               <span className="w-36 text-gray-400 text-xs">{step.label}</span>
@@ -139,12 +157,7 @@ export function AnalyticsDashboard({ campaigns }: Props) {
 
       {/* Export */}
       <div className="flex justify-end">
-        <button
-          onClick={exportCsv}
-          className="flex items-center gap-2 bg-gray-800 hover:bg-gray-700 px-4 py-2 rounded-xl text-sm font-medium transition"
-        >
-          <Download size={15} /> Export CSV
-        </button>
+        <AnalyticsExport campaigns={filteredCampaigns} />
       </div>
     </div>
   );

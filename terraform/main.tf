@@ -561,6 +561,51 @@ resource "aws_cloudfront_distribution" "main" {
 
   enabled = true
 
+  # ── Campaign pages — cache at edge, invalidate via surrogate keys ──
+  ordered_cache_behavior {
+    path_pattern     = "/campaigns/*"
+    allowed_methods  = ["GET", "HEAD", "OPTIONS"]
+    cached_methods   = ["GET", "HEAD"]
+    target_origin_id = "alb"
+
+    forwarded_values {
+      query_string = true
+      cookies {
+        forward = "none"
+      }
+      headers = ["Surrogate-Key", "Accept"]
+    }
+
+    viewer_protocol_policy = "redirect-to-https"
+    min_ttl                = 0
+    default_ttl            = 60
+    max_ttl                = 300
+    compress              = true
+  }
+
+  # ── Static assets — long-lived cache, versioned via content hash ──
+  ordered_cache_behavior {
+    path_pattern     = "*.{svg,png,jpg,jpeg,gif,ico,webp,woff,woff2,ttf,eot,css,js}"
+    allowed_methods  = ["GET", "HEAD", "OPTIONS"]
+    cached_methods   = ["GET", "HEAD"]
+    target_origin_id = "alb"
+
+    forwarded_values {
+      query_string = false
+      cookies {
+        forward = "none"
+      }
+      headers = ["Origin"]
+    }
+
+    viewer_protocol_policy = "redirect-to-https"
+    min_ttl                = 86400
+    default_ttl            = 31536000
+    max_ttl                = 31536000
+    compress              = true
+  }
+
+  # ── Default: dynamic pages / API — no edge cache ──
   default_cache_behavior {
     allowed_methods  = ["DELETE", "GET", "HEAD", "OPTIONS", "PATCH", "POST", "PUT"]
     cached_methods   = ["GET", "HEAD"]
@@ -568,11 +613,9 @@ resource "aws_cloudfront_distribution" "main" {
 
     forwarded_values {
       query_string = true
-
       cookies {
         forward = "all"
       }
-
       headers = ["*"]
     }
 
