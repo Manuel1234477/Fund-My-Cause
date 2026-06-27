@@ -1,37 +1,33 @@
 {
-  "name": "@fund-my-cause/indexer",
-  "version": "1.0.0",
-  "description": "Indexer service for Fund My Cause - indexes blockchain events and maintains normalized schema",
+  "name": "indexer-service",
+  "version": "0.1.0",
+  "description": "Off-chain indexer service for Fund-My-Cause contract events",
   "main": "dist/index.js",
   "type": "module",
   "scripts": {
-    "dev": "tsx watch src/index.ts",
     "build": "tsc",
     "start": "node dist/index.js",
-    "migrate": "tsx src/migrations/run.ts",
-    "test": "vitest --run",
-    "test:watch": "vitest"
+    "dev": "ts-node src/index.ts",
+    "test": "vitest",
+    "lint": "eslint src",
+    "health": "curl http://localhost:3001/health"
   },
   "dependencies": {
-    "pg": "^8.11.0",
-    "@stellar/stellar-sdk": "14.6.1",
-    "express": "^4.18.0",
-    "express-graphql": "^0.12.0",
-    "graphql": "^16.8.0",
-    "dataloader": "^2.2.0",
-    "cors": "^2.8.5",
-    "dotenv": "^16.0.0",
-    "pino": "^8.16.0",
-    "pino-pretty": "^10.2.0"
+    "express": "^4.18.2",
+    "@stellar/js-sdk": "^12.0.0",
+    "pino": "^8.17.2",
+    "pino-pretty": "^10.3.1",
+    "dotenv": "^16.3.1",
+    "axios": "^1.6.5"
   },
   "devDependencies": {
-    "typescript": "^5.9.0",
-    "tsx": "^4.6.0",
-    "@types/node": "^20.10.0",
-    "@types/pg": "^8.10.0",
-    "@types/express": "^4.17.20",
-    "@types/cors": "^2.8.14",
-    "@types/express-graphql": "^0.9.5",
-    "vitest": "^1.1.0"
+    "@types/express": "^4.17.21",
+    "@types/node": "^20.10.5",
+    "typescript": "^5.3.3",
+    "ts-node": "^10.9.2",
+    "vitest": "^1.1.0",
+    "eslint": "^8.56.0",
+    "@typescript-eslint/eslint-plugin": "^6.15.0",
+    "@typescript-eslint/parser": "^6.15.0"
   }
 }

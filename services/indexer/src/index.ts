@@ -1,57 +1,143 @@
-import express from 'express';
-import cors from 'cors';
-import { initializePool, closePool } from './db/index.js';
-import { runMigrations } from './db/migrations/run.js';
-import restApi from './rest-api.js';
-import { setupGraphQL } from './graphql-server.js';
-import { createLogger } from './logger.js';
+import "dotenv/config";
+import express, { Express } from "express";
+import pino from "pino";
+import { SorobanRPCClient } from "./rpc-client";
+import { HealthChecker } from "./health-checker";
+import { EventStore } from "./event-store";
 
-const logger = createLogger('app');
+// Environment variables
+const PORT = parseInt(process.env.PORT ?? "3001", 10);
+const RPC_URL = process.env.SOROBAN_RPC_URL ?? "https://soroban-testnet.stellar.org:443";
+const CONTRACT_ID = process.env.CROWDFUND_CONTRACT_ID ?? "";
+const LOG_LEVEL = process.env.LOG_LEVEL ?? "info";
 
-const app = express();
-const PORT = process.env.PORT || 3001;
-const DB_URL = process.env.DATABASE_URL || 'postgresql://localhost/fundmycause';
+// Logger
+const logger = pino({ level: LOG_LEVEL });
 
-app.use(cors());
-app.use(express.json());
+// Express app
+const app: Express = express();
 
-// Health check
-app.get('/health', (req, res) => {
-  res.json({ status: 'ok' });
-});
+// Global state
+const rpcClient = new SorobanRPCClient(
+  { url: RPC_URL, contractId: CONTRACT_ID },
+  logger
+);
+const healthChecker = new HealthChecker(logger);
+const eventStore = new EventStore(logger);
 
-// OpenAPI schema
-app.get('/openapi.json', (req, res) => {
-  res.sendFile(new URL('../openapi.yaml', import.meta.url).pathname);
-});
+let isRunning = false;
 
-// API routes
-app.use('/api/v1', restApi);
+/**
+ * Start the indexer service
+ */
+async function startIndexer(): Promise<void> {
+  logger.info({ rpc: RPC_URL, contract: CONTRACT_ID }, "Starting indexer service");
 
-// GraphQL endpoint
-setupGraphQL(app);
+  // Connect to RPC
+  const connected = await rpcClient.connect();
+  if (!connected) {
+    logger.error("Failed to connect to Soroban RPC. Retrying in 10 seconds...");
+    setTimeout(startIndexer, 10000);
+    return;
+  }
 
-async function start() {
-  try {
-    logger.info('Starting indexer service...');
-    
-    initializePool(DB_URL);
-    await runMigrations();
-    
-    app.listen(PORT, () => {
-      logger.info(`Server listening on port ${PORT}`);
-      logger.info(`GraphQL endpoint: http://localhost:${PORT}/graphql`);
-    });
-  } catch (err) {
-    logger.error('Failed to start server', err);
-    process.exit(1);
+  isRunning = true;
+
+  // Stream events
+  logger.info("Streaming events from Soroban RPC");
+  for await (const events of rpcClient.streamEvents()) {
+    try {
+      // Store events
+      eventStore.addEvents(events);
+
+      // Update health
+      for (const event of events) {
+        healthChecker.recordEvent(parseInt(event.id.split("-")[0] ?? "0", 10));
+      }
+
+      // Log batch
+      logger.debug({ eventCount: events.length }, "Ingested events");
+    } catch (error) {
+      logger.error(
+        { error: error instanceof Error ? error.message : String(error) },
+        "Error processing events"
+      );
+    }
   }
 }
 
-process.on('SIGINT', async () => {
-  logger.info('Shutting down...');
-  await closePool();
+/**
+ * Routes
+ */
+
+// Health endpoint
+app.get("/health", (req, res) => {
+  const status = healthChecker.getStatus();
+  const statusCode = status.status === "healthy" ? 200 : status.status === "degraded" ? 202 : 503;
+  res.status(statusCode).json(status);
+});
+
+// Readiness endpoint
+app.get("/ready", (req, res) => {
+  if (isRunning) {
+    res.status(200).json({ ready: true });
+  } else {
+    res.status(503).json({ ready: false });
+  }
+});
+
+// Events query endpoint
+app.get("/events", (req, res) => {
+  const { contractId, type, limit = "100" } = req.query;
+  const limitNum = Math.min(parseInt(limit as string, 10) || 100, 1000);
+
+  let events = [];
+  if (contractId) {
+    events = eventStore.queryByContract(contractId as string, limitNum);
+  } else if (type) {
+    events = eventStore.queryByType(type as string, limitNum);
+  } else {
+    events = eventStore.getAllEvents(limitNum);
+  }
+
+  res.json({ count: events.length, events });
+});
+
+// Stats endpoint
+app.get("/stats", (req, res) => {
+  const health = healthChecker.getStatus();
+  res.json({
+    eventCount: eventStore.getCount(),
+    health: health.status,
+    uptime: health.uptime,
+    lastLedger: health.lastLedger,
+    eventsProcessed: health.eventsProcessed,
+  });
+});
+
+/**
+ * Start server
+ */
+app.listen(PORT, async () => {
+  logger.info({ port: PORT }, "Indexer service listening");
+
+  // Start indexing in background
+  startIndexer().catch((error) => {
+    logger.error(
+      { error: error instanceof Error ? error.message : String(error) },
+      "Indexer crashed"
+    );
+    process.exit(1);
+  });
+});
+
+// Graceful shutdown
+process.on("SIGTERM", () => {
+  logger.info("Received SIGTERM, shutting down gracefully");
   process.exit(0);
 });
 
-start();
+process.on("SIGINT", () => {
+  logger.info("Received SIGINT, shutting down gracefully");
+  process.exit(0);
+});

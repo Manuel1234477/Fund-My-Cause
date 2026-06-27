@@ -66,3 +66,31 @@ services:
 
 volumes:
   interface_node_modules:
+
+  # ── Indexer service ─────────────────────────────────────────────────────────
+  indexer:
+    build:
+      context: .
+      dockerfile: services/indexer/Dockerfile
+    ports:
+      - "3002:3001"
+    environment:
+      - SOROBAN_RPC_URL=${SOROBAN_RPC_URL:-https://soroban-testnet.stellar.org:443}
+      - CROWDFUND_CONTRACT_ID=${NEXT_PUBLIC_CONTRACT_ID:-}
+      - PORT=3001
+      - LOG_LEVEL=info
+    env_file:
+      - path: services/indexer/.env
+        required: false
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3001/health"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+    restart: unless-stopped
+    depends_on:
+      stellar:
+        condition: service_healthy
+    profiles:
+      - indexer                        # only started with: docker compose --profile indexer up

@@ -10,11 +10,13 @@ import { EmptyState, NoDashboardCampaignsIllustration } from "@/components/ui/Em
 import { DeadlineExtensionModal } from "@/components/ui/DeadlineExtensionModal";
 import { AnalyticsDashboard } from "@/components/ui/AnalyticsDashboard";
 import { CancelCampaignModal } from "@/components/ui/CancelCampaignModal";
+import { NextActionsPanel } from "@/components/ui/NextActionsPanel";
 import { formatXLM } from "@/lib/format";
 import { useWallet } from "@/context/WalletContext";
 import { useNotifications } from "@/context/NotificationContext";
 import { useCampaign } from "@/hooks/useCampaign";
 import type { CampaignStatus } from "@/types/soroban";
+import type { Campaign } from "@/types/campaign";
 import {
   buildWithdrawTx,
   buildCancelTx,
@@ -396,6 +398,7 @@ export default function DashboardPage() {
   const [extendTarget, setExtendTarget] = useState<{ contractId: string; currentDeadline: string } | null>(null);
   const [cancelTarget, setCancelTarget] = useState<{ contractId: string; title: string } | null>(null);
   const [refreshNonce, setRefreshNonce] = useState(0);
+  const [dashboardCampaigns, setDashboardCampaigns] = useState<Campaign[]>([]);
 
   const loadCampaignIds = useCallback((walletAddress: string) => {
     setLoading(true);
@@ -520,6 +523,9 @@ export default function DashboardPage() {
           {(contractIds.length > 0 || contributedIds.length > 0) && (
             <DashboardStats createdIds={contractIds} contributedIds={contributedIds} />
           )}
+
+          {/* Next Actions Panel */}
+          {dashboardCampaigns.length > 0 && <NextActionsPanel campaigns={dashboardCampaigns} />}
 
           {/* Created campaigns */}
           <section aria-labelledby="created-campaigns-heading" className="mb-10">
