@@ -2052,24 +2052,32 @@ fn matching_refund_sponsor_manual_after_cancellation() {
     let _ = creator;
 }
 
-// ── #693 On-chain campaign categories ────────────────────────────────────────
+// ── #680 Recurring contributions ─────────────────────────────────────────────
 
 #[test]
-fn category_is_set_at_init_and_retrievable() {
+fn execute_recurring_after_cancel_is_rejected() {
     let env = Env::default();
-    env.mock_all_auths();
-
     let (_creator, _token_id, client, _) = setup_contract(&env, 1_000_000, 1_000_000, 100);
-    // setup_contract uses Category::Other
-    assert_eq!(client.get_category(), Category::Other);
+
+    let contributor = Address::generate(&env);
+    env.ledger().set_timestamp(1_000);
+    client.setup_recurring(&contributor, &500, &3_600, &100_000);
+    client.cancel_recurring(&contributor);
+
+    // Plan is gone; execution must fail
+    let r = client.try_execute_recurring(&contributor);
+    assert_eq!(r.err(), Some(Ok(ContractError::InvalidRecurringPlan)));
 }
 
 #[test]
-fn update_category_changes_stored_value() {
+fn execute_recurring_no_plan_is_rejected() {
     let env = Env::default();
-    env.mock_all_auths();
-
     let (_creator, _token_id, client, _) = setup_contract(&env, 1_000_000, 1_000_000, 100);
-    client.update_category(&Category::Technology);
-    assert_eq!(client.get_category(), Category::Technology);
+
+    let contributor = Address::generate(&env);
+    env.ledger().set_timestamp(1_000);
+
+    // No plan was ever set up
+    let r = client.try_execute_recurring(&contributor);
+    assert_eq!(r.err(), Some(Ok(ContractError::InvalidRecurringPlan)));
 }
