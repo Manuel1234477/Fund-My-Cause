@@ -27,11 +27,16 @@ pub enum Status {
 /// Campaign statistics snapshot.
 ///
 /// Contains aggregated metrics about campaign progress and contributor activity.
+/// When `FeeMode::OnContribution` is active, `gross_raised` records the sum of
+/// all contributions before fee deduction, while `total_raised` (net) is used
+/// for goal-progress calculations.
 #[derive(Clone)]
 #[contracttype]
 pub struct CampaignStats {
-    /// Total amount raised in stroops
+    /// Net total raised in stroops (after per-contribution fees, if any)
     pub total_raised: i128,
+    /// Gross total raised in stroops (before any fee deductions)
+    pub gross_raised: i128,
     /// Campaign funding goal in stroops
     pub goal: i128,
     /// Progress as basis points (0-10000, where 10000 = 100%)
@@ -44,9 +49,25 @@ pub struct CampaignStats {
     pub largest_contribution: i128,
 }
 
+/// Fee deduction mode for the platform fee.
+///
+/// - `OnSuccess`: fee is deducted once at withdrawal time (original behaviour).
+/// - `OnContribution`: a per-contribution fee is deducted and forwarded to the
+///   platform address on every `contribute` call.  The gross amount is tracked
+///   separately so `get_stats` can report both gross and net totals.
+#[derive(Clone, Copy, PartialEq, Debug)]
+#[contracttype]
+pub enum FeeMode {
+    /// Deduct the platform fee from the creator's payout on withdrawal.
+    OnSuccess,
+    /// Deduct the platform fee from each contribution immediately.
+    OnContribution,
+}
+
 /// Platform fee configuration.
 ///
-/// Specifies the address that receives platform fees and the fee percentage.
+/// Specifies the address that receives platform fees, the fee percentage, and
+/// when the fee is collected (`fee_mode`).
 #[derive(Clone, PartialEq, Debug)]
 #[contracttype]
 pub struct PlatformConfig {
@@ -54,6 +75,9 @@ pub struct PlatformConfig {
     pub address: Address,
     /// Fee percentage in basis points (e.g., 250 = 2.5%)
     pub fee_bps: u32,
+    /// When to collect the fee: once at withdrawal or per contribution.
+    /// Defaults to `OnSuccess` for backward compatibility.
+    pub fee_mode: FeeMode,
 }
 
 /// Complete campaign information.
@@ -1523,4 +1547,18 @@ pub struct EventQfContribution {
     pub cumulative: i128,
     /// Distinct-contributor count after this contribution
     pub contributor_count: u32,
+}
+
+// ── Issue #699: IPFS CID Anchoring ───────────────────────────────────────────
+
+/// Emitted when the campaign IPFS CID is updated.
+///
+/// Event topic: `("campaign", "ipfs_cid_updated")`
+#[derive(Clone)]
+#[contracttype]
+pub struct EventIpfsCidUpdated {
+    /// The new IPFS CID (v0 or v1)
+    pub cid: String,
+    /// Ledger timestamp of the update
+    pub timestamp: u64,
 }

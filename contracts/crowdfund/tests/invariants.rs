@@ -157,6 +157,7 @@ fn test_invariant_contract_balance_zero_after_successful_withdraw() {
         Some(crowdfund::PlatformConfig {
             address: platform_addr.clone(),
             fee_bps,
+            fee_mode: crowdfund::FeeMode::OnSuccess,
         }),
     );
 

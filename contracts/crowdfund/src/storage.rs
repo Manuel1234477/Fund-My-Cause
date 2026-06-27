@@ -123,6 +123,14 @@ pub const KEY_EMERGENCY_PAUSE: Symbol = soroban_sdk::symbol_short!("EMPAUSE");
 /// Storage key for reentrancy lock (prevents reentrancy attacks)
 pub const KEY_REENTRANCY_LOCK: Symbol = soroban_sdk::symbol_short!("REENTLK");
 
+// ── Issue #698: Fee Mode ──────────────────────────────────────────────────────
+/// Storage key for the gross total raised (before per-contribution fee deductions)
+pub const KEY_GROSS_TOTAL: Symbol = soroban_sdk::symbol_short!("GROSSTOT");
+
+// ── Issue #699: IPFS CID Anchoring ───────────────────────────────────────────
+/// Storage key for the campaign metadata IPFS content identifier (CID)
+pub const KEY_IPFS_CID: Symbol = soroban_sdk::symbol_short!("IPFSCID");
+
 use soroban_sdk::{Address, Symbol as SorobanSymbol};
 
 /// Helper function to get the admin address from storage

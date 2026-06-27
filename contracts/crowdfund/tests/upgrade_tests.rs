@@ -89,7 +89,7 @@ fn test_upgrade_with_platform_fee_preserves_config() {
         &String::from_str(&env, "Test"),
         &String::from_str(&env, "Test"),
         &None,
-        &Some(PlatformConfig { address: platform.clone(), fee_bps: 500 }),
+        &Some(PlatformConfig { address: platform.clone(), fee_bps: 500, fee_mode: crowdfund::FeeMode::OnSuccess }),
         &None,
         &Category::Other,
         &None,

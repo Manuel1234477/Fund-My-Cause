@@ -34,24 +34,34 @@ use soroban_sdk::{contract, contractimpl, contracttype, symbol_short, Address, E
 /// Instance storage key for the list of registered campaign contract addresses.
 const KEY_CAMPAIGNS: Symbol = symbol_short!("CMPLIST");
 
-/// Storage key variants for category-indexed campaign lists.
+/// Campaign status values mirrored from the crowdfund contract for filtering.
 ///
-/// Each `CategoryList(id)` entry stores a `Vec<Address>` of all campaigns
-/// registered under that category identifier.  The `id` follows the same
-/// numeric discriminant as the crowdfund contract's `Category` enum:
+/// The registry stores a caller-supplied status tag alongside each campaign so
+/// that `list_by_status` can filter without cross-contract calls.
+/// Status values must be kept in sync by the registrant (typically the deploy script).
 ///
-/// | id | Category   |
-/// |----|------------|
-/// |  0 | Charity    |
-/// |  1 | Technology |
-/// |  2 | Creative   |
-/// |  3 | Event      |
-/// |  4 | Personal   |
-/// |  5 | Other      |
+/// | value | meaning      |
+/// |-------|--------------|
+/// |  0    | Active       |
+/// |  1    | Successful   |
+/// |  2    | Failed       |
+/// |  3    | Cancelled    |
+#[contracttype]
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub enum CampaignStatus {
+    Active = 0,
+    Successful = 1,
+    Failed = 2,
+    Cancelled = 3,
+}
+
+/// Storage key variants for indexed campaign lists.
 #[contracttype]
 enum RegDataKey {
     /// Paginated list of campaign addresses for a given numeric category id.
     CategoryList(u32),
+    /// List of campaign addresses for a given status (maps to CampaignStatus discriminant).
+    StatusList(u32),
 }
 
 /// The Fund-My-Cause registry contract.
@@ -250,6 +260,113 @@ impl RegistryContract {
 
         out
     }
+
+    /// Registers a campaign with a status tag for status-based filtering.
+    ///
+    /// Performs the same global deduplication as [`register`] and additionally
+    /// adds the campaign to the per-status index so it appears in
+    /// [`list_by_status`] results.
+    ///
+    /// # Arguments
+    /// * `campaign_id` - Deployed campaign contract address.
+    /// * `status` - Initial status of the campaign.
+    pub fn register_with_status(env: Env, campaign_id: Address, status: CampaignStatus) {
+        let mut campaigns: Vec<Address> = env
+            .storage()
+            .instance()
+            .get(&KEY_CAMPAIGNS)
+            .unwrap_or_else(|| Vec::new(&env));
+
+        if !campaigns.contains(&campaign_id) {
+            campaigns.push_back(campaign_id.clone());
+            env.storage().instance().set(&KEY_CAMPAIGNS, &campaigns);
+            env.events()
+                .publish(("registry", "registered"), campaign_id.clone());
+        }
+
+        let status_key = RegDataKey::StatusList(status as u32);
+        let mut status_list: Vec<Address> = env
+            .storage()
+            .instance()
+            .get(&status_key)
+            .unwrap_or_else(|| Vec::new(&env));
+
+        if !status_list.contains(&campaign_id) {
+            status_list.push_back(campaign_id);
+            env.storage().instance().set(&status_key, &status_list);
+        }
+    }
+
+    /// Updates the status tag for a registered campaign.
+    ///
+    /// Removes `campaign_id` from its old status list and adds it to the new one.
+    /// This is a no-op if the campaign is not yet registered.
+    pub fn update_status(env: Env, campaign_id: Address, old_status: CampaignStatus, new_status: CampaignStatus) {
+        // Remove from old status list
+        let old_key = RegDataKey::StatusList(old_status as u32);
+        let mut old_list: Vec<Address> = env
+            .storage()
+            .instance()
+            .get(&old_key)
+            .unwrap_or_else(|| Vec::new(&env));
+        let mut new_old = Vec::new(&env);
+        for i in 0..old_list.len() {
+            let addr = old_list.get(i).unwrap();
+            if addr != campaign_id {
+                new_old.push_back(addr);
+            }
+        }
+        env.storage().instance().set(&old_key, &new_old);
+
+        // Add to new status list
+        let new_key = RegDataKey::StatusList(new_status as u32);
+        let mut new_list: Vec<Address> = env
+            .storage()
+            .instance()
+            .get(&new_key)
+            .unwrap_or_else(|| Vec::new(&env));
+        if !new_list.contains(&campaign_id) {
+            new_list.push_back(campaign_id);
+            env.storage().instance().set(&new_key, &new_list);
+        }
+    }
+
+    /// Returns a paginated slice of campaigns filtered by status.
+    ///
+    /// Only campaigns registered via [`register_with_status`] appear here.
+    /// Pagination is identical to [`list`]: zero-indexed, empty on out-of-range offset.
+    ///
+    /// # Arguments
+    /// * `status` - Status to filter by.
+    /// * `offset` - Zero-based start index.
+    /// * `limit` - Maximum results (0 returns empty).
+    pub fn list_by_status(env: Env, status: CampaignStatus, offset: u32, limit: u32) -> Vec<Address> {
+        if limit == 0 {
+            return Vec::new(&env);
+        }
+
+        let campaigns: Vec<Address> = env
+            .storage()
+            .instance()
+            .get(&RegDataKey::StatusList(status as u32))
+            .unwrap_or_else(|| Vec::new(&env));
+
+        let total = campaigns.len();
+        if offset >= total {
+            return Vec::new(&env);
+        }
+
+        let end = offset.saturating_add(limit).min(total);
+        let mut out = Vec::new(&env);
+        let mut i = offset;
+        while i < end {
+            if let Some(addr) = campaigns.get(i) {
+                out.push_back(addr);
+            }
+            i += 1;
+        }
+        out
+    }
 }
 
 #[cfg(test)]
@@ -372,5 +489,95 @@ mod tests {
         // limit = 0 returns empty
         let empty = client.list(&0, &0);
         assert_eq!(empty.len(), 0);
+    }
+
+    // ── Issue #701: Status filtering tests ───────────────────────────────────
+
+    #[test]
+    fn test_register_with_status_and_filter() {
+        let env = Env::default();
+        let registry_id = env.register_contract(None, RegistryContract);
+        let client = RegistryContractClient::new(&env, &registry_id);
+
+        let active1 = Address::generate(&env);
+        let active2 = Address::generate(&env);
+        let successful1 = Address::generate(&env);
+        let failed1 = Address::generate(&env);
+
+        client.register_with_status(&active1, &CampaignStatus::Active);
+        client.register_with_status(&active2, &CampaignStatus::Active);
+        client.register_with_status(&successful1, &CampaignStatus::Successful);
+        client.register_with_status(&failed1, &CampaignStatus::Failed);
+
+        // All appear in global list
+        assert_eq!(client.list(&0, &10).len(), 4);
+
+        // Status filters return correct subsets
+        let actives = client.list_by_status(&CampaignStatus::Active, &0, &10);
+        assert_eq!(actives.len(), 2);
+
+        let successes = client.list_by_status(&CampaignStatus::Successful, &0, &10);
+        assert_eq!(successes.len(), 1);
+        assert_eq!(successes.get(0).unwrap(), successful1);
+
+        let failures = client.list_by_status(&CampaignStatus::Failed, &0, &10);
+        assert_eq!(failures.len(), 1);
+
+        // Cancelled returns empty (none registered with that status)
+        let cancelled = client.list_by_status(&CampaignStatus::Cancelled, &0, &10);
+        assert_eq!(cancelled.len(), 0);
+    }
+
+    #[test]
+    fn test_list_by_status_pagination_boundary_conditions() {
+        let env = Env::default();
+        let registry_id = env.register_contract(None, RegistryContract);
+        let client = RegistryContractClient::new(&env, &registry_id);
+
+        for _ in 0..5 {
+            client.register_with_status(&Address::generate(&env), &CampaignStatus::Active);
+        }
+
+        // Normal first page
+        assert_eq!(client.list_by_status(&CampaignStatus::Active, &0, &3).len(), 3);
+        // Last page (partial)
+        assert_eq!(client.list_by_status(&CampaignStatus::Active, &3, &3).len(), 2);
+        // Offset at exact end — empty
+        assert_eq!(client.list_by_status(&CampaignStatus::Active, &5, &3).len(), 0);
+        // Offset beyond end — empty
+        assert_eq!(client.list_by_status(&CampaignStatus::Active, &10, &3).len(), 0);
+        // limit = 0 — always empty
+        assert_eq!(client.list_by_status(&CampaignStatus::Active, &0, &0).len(), 0);
+    }
+
+    #[test]
+    fn test_update_status_moves_campaign_between_buckets() {
+        let env = Env::default();
+        let registry_id = env.register_contract(None, RegistryContract);
+        let client = RegistryContractClient::new(&env, &registry_id);
+
+        let campaign = Address::generate(&env);
+        client.register_with_status(&campaign, &CampaignStatus::Active);
+        assert_eq!(client.list_by_status(&CampaignStatus::Active, &0, &10).len(), 1);
+        assert_eq!(client.list_by_status(&CampaignStatus::Successful, &0, &10).len(), 0);
+
+        // Campaign finishes successfully
+        client.update_status(&campaign, &CampaignStatus::Active, &CampaignStatus::Successful);
+        assert_eq!(client.list_by_status(&CampaignStatus::Active, &0, &10).len(), 0);
+        assert_eq!(client.list_by_status(&CampaignStatus::Successful, &0, &10).len(), 1);
+    }
+
+    #[test]
+    fn test_register_with_status_deduplicates() {
+        let env = Env::default();
+        let registry_id = env.register_contract(None, RegistryContract);
+        let client = RegistryContractClient::new(&env, &registry_id);
+
+        let campaign = Address::generate(&env);
+        client.register_with_status(&campaign, &CampaignStatus::Active);
+        client.register_with_status(&campaign, &CampaignStatus::Active); // duplicate
+
+        assert_eq!(client.list(&0, &10).len(), 1);
+        assert_eq!(client.list_by_status(&CampaignStatus::Active, &0, &10).len(), 1);
     }
 }

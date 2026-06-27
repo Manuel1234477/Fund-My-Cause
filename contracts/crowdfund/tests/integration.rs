@@ -29,6 +29,7 @@ fn test_full_lifecycle_success_with_platform_fee() {
         Some(PlatformConfig {
             address: platform_addr.clone(),
             fee_bps,
+            fee_mode: crowdfund::FeeMode::OnSuccess,
         }),
     );
 

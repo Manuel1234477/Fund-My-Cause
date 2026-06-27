@@ -1,11 +1,48 @@
 //! Security module for the crowdfund contract.
 //!
-//! Implements comprehensive security controls including:
-//! - Reentrancy protection
-//! - Circuit breaker patterns
-//! - Rate limiting
-//! - Input sanitization
-//! - Access control enforcement
+//! ## Checks-Effects-Interactions (CEI) Safety Model
+//!
+//! All state-mutating entrypoints in `lib.rs` follow the CEI pattern to prevent
+//! reentrancy and ensure atomicity:
+//!
+//! 1. **Checks** — validate all preconditions (status, auth, amounts, deadlines)
+//!    before touching any state.
+//! 2. **Effects** — write every state change (storage updates, counter increments)
+//!    before any external call.
+//! 3. **Interactions** — perform token transfers (external calls) only after all
+//!    internal state is finalised.
+//!
+//! ### Entrypoint audit
+//!
+//! | Function                   | CEI order         | Notes                                        |
+//! |----------------------------|-------------------|----------------------------------------------|
+//! | `contribute`               | ✅ checks→effects→transfer | Transfer after all storage writes.  |
+//! | `withdraw`                 | ✅ checks→effects→transfer | Status set to `Successful`, total zeroed, then transfer. |
+//! | `refund_single`            | ✅ checks→effects→transfer | Contribution zeroed before transfer.         |
+//! | `refund_batch`             | ✅ checks→effects→transfer | Each contribution zeroed before its transfer.|
+//! | `refund_partial`           | ✅ checks→effects→transfer | Balance decremented then transfer.           |
+//! | `execute_emergency_withdrawal` | ✅ checks→effects→transfer | Total zeroed before transfer.           |
+//! | `contribute_on_behalf`     | ✅ checks→effects→transfer | All writes before transfer.                  |
+//! | `setup_matching`           | ✅ checks→effects→transfer | Config written before sponsor transfer-in.   |
+//! | `claim_insurance_payout`   | ✅ checks→effects→transfer | Fee record zeroed, pool decremented before transfer. |
+//! | `claim_yield`              | ✅ checks→effects→transfer | Accounting updated before transfer.          |
+//! | `distribute_rewards`       | ✅ checks→effects→transfer | Claimed amount recorded before transfer.     |
+//!
+//! ### Reentrancy
+//!
+//! Soroban's execution model is single-threaded and contracts cannot be re-entered
+//! mid-execution via the token transfer mechanism (token contracts are separate
+//! Wasm instances and cannot call back into the crowdfund contract during a
+//! transfer).  The `ReentrancyGuard` struct is available as an additional
+//! defence-in-depth layer for any future entrypoints that may be susceptible.
+//!
+//! ### Malicious Token Defence
+//!
+//! A malicious token contract that panics, loops, or lies about balances can
+//! cause a transaction to abort.  Because all effects are written before the
+//! external transfer call, an aborted transaction rolls back the entire ledger
+//! change — no partial state corruption is possible.  See `adversarial.rs` for
+//! tests that verify this property.
 
 use crate::errors::ContractError;
 use crate::storage;

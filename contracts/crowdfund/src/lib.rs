@@ -78,6 +78,10 @@ pub use storage::{
     KEY_GOVERNANCE_CONFIG, KEY_GOVERNANCE_NONCE, KEY_EMERGENCY_PAUSE,
     // #605 Security Hardening
     KEY_REENTRANCY_LOCK,
+    // #698 Fee Mode
+    KEY_GROSS_TOTAL,
+    // #699 IPFS CID
+    KEY_IPFS_CID,
 };
 pub use types::{
     CampaignAnalytics,
@@ -91,6 +95,10 @@ pub use types::{
     Delegation,
     Dispute,
     DisputeStatus,
+    // #698
+    FeeMode,
+    // #699
+    EventIpfsCidUpdated,
     // #443
     PerformanceMetrics,
     AnalyticsDataPoint,
@@ -548,6 +556,31 @@ impl CrowdfundContract {
             &amount,
         );
 
+        // ── #698: Per-contribution fee deduction (OnContribution mode) ────────
+        // Track gross total regardless of fee mode so stats can report both.
+        let gross_total: i128 = inst.get(&KEY_GROSS_TOTAL).unwrap_or(0);
+        inst.set(&KEY_GROSS_TOTAL, &(gross_total.checked_add(amount).unwrap_or(gross_total)));
+
+        let contrib_fee: i128 = if let Some(ref config) = inst.get::<_, PlatformConfig>(&KEY_PLATFORM) {
+            if config.fee_mode == FeeMode::OnContribution {
+                let f = amount * config.fee_bps as i128 / 10_000;
+                if f > 0 {
+                    token::Client::new(&env, &token).transfer(
+                        &env.current_contract_address(),
+                        &config.address,
+                        &f,
+                    );
+                }
+                f
+            } else {
+                0
+            }
+        } else {
+            0
+        };
+        // Net amount credited toward goal
+        let effective_amount_after_fee = amount - contrib_fee;
+
         // ── #433: Split out insurance fee if enabled ──────────────────────────
         // The full `amount` is held in the contract, but the insurance portion
         // is bookkept separately: it does not count toward the funding goal
@@ -555,9 +588,9 @@ impl CrowdfundContract {
         let insurance_fee: i128 = inst
             .get::<_, InsuranceConfig>(&KEY_INSURANCE)
             .filter(|c| c.enabled)
-            .map(|c| amount * c.fee_bps as i128 / 10_000)
+            .map(|c| effective_amount_after_fee * c.fee_bps as i128 / 10_000)
             .unwrap_or(0);
-        let effective_amount = amount - insurance_fee;
+        let effective_amount = effective_amount_after_fee - insurance_fee;
         if insurance_fee > 0 {
             let fee_key = DataKey::InsuranceFee(contributor.clone());
             let prev_fee: i128 = env.storage().persistent().get(&fee_key).unwrap_or(0);
@@ -778,10 +811,17 @@ impl CrowdfundContract {
         let token_client = token::Client::new(&env, &token_address);
 
         // ── Calculate fee and payout ──────────────────────────────────────────
+        // For OnSuccess mode: deduct fee now from the net total.
+        // For OnContribution mode: fees were already collected per-contribution;
+        // no further deduction is applied here.
         let fee = if let Some(ref config) = platform_config {
-            let f = total * config.fee_bps as i128 / 10_000;
-            token_client.transfer(&env.current_contract_address(), &config.address, &f);
-            f
+            if config.fee_mode == FeeMode::OnContribution {
+                0 // already collected per contribution
+            } else {
+                let f = total * config.fee_bps as i128 / 10_000;
+                token_client.transfer(&env.current_contract_address(), &config.address, &f);
+                f
+            }
         } else {
             0
         };
@@ -939,6 +979,53 @@ impl CrowdfundContract {
         Self::index_campaign(env)?;
 
         Ok(())
+    }
+
+    /// Anchors an IPFS content identifier (CID) on-chain for the campaign.
+    ///
+    /// The CID must be a valid IPFS v0 (Qm…, 46 chars) or v1 (bafy…, 59+ chars)
+    /// identifier.  Only the campaign creator may call this while the campaign
+    /// is Active.
+    ///
+    /// # Returns
+    /// * `Ok(())` on success
+    /// * `Err(ContractError::NotActive)` if campaign is not Active
+    /// * `Err(ContractError::InvalidInput)` if the CID format is invalid
+    pub fn update_ipfs_cid(env: Env, cid: String) -> Result<(), ContractError> {
+        let inst = env.storage().instance();
+        let status: Status = inst.get(&KEY_STATUS).unwrap();
+        if status != Status::Active {
+            return Err(ContractError::NotActive);
+        }
+        let creator: Address = inst.get(&KEY_CREATOR).unwrap();
+        creator.require_auth();
+
+        // Validate CID: must start with "Qm" (v0, len=46) or "bafy" (v1, len>=59)
+        let len = cid.len();
+        let is_v0 = len == 46 && {
+            let b = cid.to_string();
+            b.starts_with("Qm")
+        };
+        let is_v1 = len >= 59 && {
+            let b = cid.to_string();
+            b.starts_with("bafy")
+        };
+        if !is_v0 && !is_v1 {
+            return Err(ContractError::InvalidInput);
+        }
+
+        inst.set(&KEY_IPFS_CID, &cid);
+        let now = env.ledger().timestamp();
+        env.events().publish(
+            ("campaign", "ipfs_cid_updated"),
+            EventIpfsCidUpdated { cid, timestamp: now },
+        );
+        Ok(())
+    }
+
+    /// Returns the stored IPFS CID for this campaign, if one has been set.
+    pub fn get_ipfs_cid(env: Env) -> Option<String> {
+        env.storage().instance().get(&KEY_IPFS_CID)
     }
 
     /// Extends the campaign deadline to a later time.
@@ -3103,6 +3190,16 @@ impl CrowdfundContract {
         env.storage().instance().get(&KEY_PLATFORM)
     }
 
+    /// Returns the current fee mode (`OnSuccess` or `OnContribution`), defaulting
+    /// to `OnSuccess` when no platform config is set.
+    pub fn get_fee_mode(env: Env) -> FeeMode {
+        env.storage()
+            .instance()
+            .get::<_, PlatformConfig>(&KEY_PLATFORM)
+            .map(|c| c.fee_mode)
+            .unwrap_or(FeeMode::OnSuccess)
+    }
+
     /// Returns the contract version number.
     ///
     /// # Arguments
@@ -3134,6 +3231,7 @@ impl CrowdfundContract {
         let contributor_count: u32 = inst.get(&DataKey::ContributorCount).unwrap_or(0);
         let largest_contribution: i128 = inst.get(&DataKey::LargestContribution).unwrap_or(0);
         let total_raised: i128 = inst.get(&KEY_TOTAL).unwrap_or(0);
+        let gross_raised: i128 = inst.get(&KEY_GROSS_TOTAL).unwrap_or(total_raised);
         let goal: i128 = inst.get(&KEY_GOAL).unwrap();
 
         let progress_bps = if goal > 0 {
@@ -3155,6 +3253,7 @@ impl CrowdfundContract {
 
         CampaignStats {
             total_raised,
+            gross_raised,
             goal,
             progress_bps,
             contributor_count,
@@ -4992,6 +5091,7 @@ impl CrowdfundContract {
         let platform = PlatformConfig {
             address: proposal.platform_address.clone(),
             fee_bps: proposal.platform_fee_bps,
+            fee_mode: FeeMode::OnSuccess,
         };
         inst.set(&KEY_PLATFORM, &platform);
 

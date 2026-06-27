@@ -150,7 +150,7 @@ fn test_adversarial_platform_fee_manipulation() {
         &soroban_sdk::String::from_str(&env, "Test"),
         &soroban_sdk::String::from_str(&env, "Test"),
         &None,
-        &Some(crowdfund::PlatformConfig { address: platform.clone(), fee_bps }),
+        &Some(crowdfund::PlatformConfig { address: platform.clone(), fee_bps, fee_mode: crowdfund::FeeMode::OnSuccess }),
         &None,
         &crowdfund::Category::Other,
         &None,
@@ -321,4 +321,146 @@ fn test_adversarial_past_deadline_initialization() {
     }));
 
     assert!(result.is_err());
+}
+
+// ── Issue #700: CEI adversarial tests ────────────────────────────────────────
+
+/// Verify that a double-spend on refund_single is impossible (storage zeroed before
+/// any transfer, so a second call is a no-op and never over-pays the attacker).
+#[test]
+fn test_cei_refund_single_no_double_spend() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let deadline = 1_000u64;
+    let c = setup(&env, 1_000_000, deadline, None);
+
+    let attacker = Address::generate(&env);
+    let amount = 50_000i128;
+    c.token_admin.mint(&attacker, &amount);
+    env.ledger().set_timestamp(500);
+    c.client.contribute(&attacker, &amount, &c.token_id, &None);
+
+    env.ledger().set_timestamp(deadline + 1);
+
+    // First refund succeeds
+    c.client.refund_single(&attacker);
+    assert_eq!(c.token.balance(&attacker), amount);
+
+    // Second call is a no-op — storage is 0, nothing transferred
+    c.client.refund_single(&attacker);
+    assert_eq!(c.token.balance(&attacker), amount, "double-spend: balance must not increase");
+}
+
+/// Verify that refund_batch cannot over-pay when the same contributor appears twice.
+#[test]
+fn test_cei_refund_batch_idempotent() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let deadline = 1_000u64;
+    let c = setup(&env, 1_000_000, deadline, None);
+
+    let attacker = Address::generate(&env);
+    let amount = 20_000i128;
+    c.token_admin.mint(&attacker, &amount);
+    env.ledger().set_timestamp(500);
+    c.client.contribute(&attacker, &amount, &c.token_id, &None);
+
+    env.ledger().set_timestamp(deadline + 1);
+
+    // Pass the same address twice in the batch
+    let mut batch = soroban_sdk::Vec::new(&env);
+    batch.push_back(attacker.clone());
+    batch.push_back(attacker.clone());
+    c.client.refund_batch(&batch);
+
+    assert_eq!(c.token.balance(&attacker), amount, "batch double-spend must not occur");
+}
+
+/// Verify that withdraw() zeroes the total before transferring, preventing
+/// a state where the campaign appears funded after withdrawal.
+#[test]
+fn test_cei_withdraw_zeroes_total_before_payout() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let deadline = 1_000u64;
+    let goal = 10_000i128;
+    let c = setup(&env, goal, deadline, None);
+
+    let contributor = Address::generate(&env);
+    c.token_admin.mint(&contributor, &goal);
+    env.ledger().set_timestamp(500);
+    c.client.contribute(&contributor, &goal, &c.token_id, &None);
+    assert_eq!(c.client.total_raised(), goal);
+
+    env.ledger().set_timestamp(deadline + 1);
+    c.client.withdraw();
+
+    // After withdrawal, total is zeroed (state reflects empty contract)
+    assert_eq!(c.client.total_raised(), 0);
+}
+
+/// Verify that contribute() correctly deducts OnContribution fee and still
+/// credits the net amount toward the goal (stats gross vs net separation).
+#[test]
+fn test_on_contribution_fee_mode_net_vs_gross() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let deadline = 1_000u64;
+    let goal = 10_000i128;
+    let platform = Address::generate(&env);
+    let fee_bps = 1_000u32; // 10 %
+
+    let creator = Address::generate(&env);
+    let token_admin_addr = Address::generate(&env);
+    let token_id = env.register_stellar_asset_contract(token_admin_addr.clone());
+    let token_admin = token::StellarAssetClient::new(&env, &token_id);
+    let token = token::Client::new(&env, &token_id);
+    let contract_id = env.register_contract(None, crowdfund::CrowdfundContract);
+    let client = crowdfund::CrowdfundContractClient::new(&env, &contract_id);
+
+    env.ledger().set_timestamp(100);
+    client.initialize(
+        &creator,
+        &token_id,
+        &goal,
+        &deadline,
+        &1,
+        &0i128,
+        &soroban_sdk::String::from_str(&env, "T"),
+        &soroban_sdk::String::from_str(&env, "D"),
+        &None,
+        &Some(crowdfund::PlatformConfig {
+            address: platform.clone(),
+            fee_bps,
+            fee_mode: crowdfund::FeeMode::OnContribution,
+        }),
+        &None,
+        &crowdfund::Category::Other,
+        &None,
+        &None,
+    );
+
+    let contributor = Address::generate(&env);
+    let contrib_amount = 1_000i128;
+    token_admin.mint(&contributor, &contrib_amount);
+    env.ledger().set_timestamp(500);
+    client.contribute(&contributor, &contrib_amount, &token_id, &None);
+
+    let expected_fee = contrib_amount * fee_bps as i128 / 10_000; // 100
+    let expected_net = contrib_amount - expected_fee;              // 900
+
+    // Net total used for goal progress
+    assert_eq!(client.total_raised(), expected_net);
+
+    // Platform received the fee immediately
+    assert_eq!(token.balance(&platform), expected_fee);
+
+    // Stats show gross == contribution amount, net == total_raised
+    let stats = client.get_stats();
+    assert_eq!(stats.total_raised, expected_net);
+    assert_eq!(stats.gross_raised, contrib_amount);
 }

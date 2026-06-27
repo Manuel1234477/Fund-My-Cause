@@ -168,6 +168,7 @@ fn benchmark_withdraw(c: &mut Criterion) {
                 &Some(PlatformConfig {
                     address: Address::generate(&env),
                     fee_bps: 250,
+                    fee_mode: crowdfund::FeeMode::OnSuccess,
                 }),
                 &None,
                 &Category::Other,

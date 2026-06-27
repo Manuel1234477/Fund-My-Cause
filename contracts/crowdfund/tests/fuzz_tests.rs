@@ -316,7 +316,7 @@ proptest! {
             &String::from_str(&env, "Test"),
             &String::from_str(&env, "Test"),
             &None,
-            &Some(PlatformConfig { address: platform.clone(), fee_bps }),
+            &Some(PlatformConfig { address: platform.clone(), fee_bps, fee_mode: crowdfund::FeeMode::OnSuccess }),
             &None,
             &Category::Other,
             &None,
