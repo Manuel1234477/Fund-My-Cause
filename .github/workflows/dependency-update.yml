@@ -1,41 +1,167 @@
-name: Dependency Updates
+name: Dependency Update Validation
 
 on:
   pull_request:
     types: [opened, synchronize, reopened]
 
 permissions:
-  contents: write
+  contents: read
   pull-requests: write
 
+# ── Full test matrix ──────────────────────────────────────────────────────────
 jobs:
-  # ── Security audit ───────────────────────────────────────────────────────────
-  security-audit:
-    name: Security audit
-    runs-on: ubuntu-latest
+  rust-matrix:
+    name: Rust tests (${{ matrix.os }})
     if: contains(github.event.pull_request.labels.*.name, 'dependencies')
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
 
-      - name: npm audit (frontend)
-        working-directory: apps/interface
-        run: |
-          npm ci --ignore-scripts
-          npm audit --audit-level=high
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
 
-      - name: cargo audit (contracts)
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Build contracts
+        run: cargo build --release --target wasm32-unknown-unknown
+
+      - name: Run Rust tests
+        run: cargo test --workspace
+
+  frontend-matrix:
+    name: Frontend tests (Node ${{ matrix.node }})
+    if: contains(github.event.pull_request.labels.*.name, 'dependencies')
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ["18", "20", "22"]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+
+      - run: npm ci
+
+      - name: Lint
+        working-directory: apps/interface
+        run: npx eslint src --max-warnings 0
+
+      - name: Typecheck
+        working-directory: apps/interface
+        run: npx tsc --noEmit
+
+      - name: Test with coverage
+        working-directory: apps/interface
+        run: npm run test:coverage
+
+  security-audit:
+    name: Security audit
+    if: contains(github.event.pull_request.labels.*.name, 'dependencies')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci --ignore-scripts
+
+      - name: npm audit
+        working-directory: apps/interface
+        run: npm audit --audit-level=high
+
+      - name: cargo audit
         run: |
           cargo install --locked cargo-audit
           cargo audit
 
-  # ── Auto-merge patch updates from Dependabot ────────────────────────────────
+  # ── Changelog diff comment ────────────────────────────────────────────────
+  changelog-diff:
+    name: Changelog diff
+    if: contains(github.event.pull_request.labels.*.name, 'dependencies')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Fetch Dependabot metadata
+        id: meta
+        uses: dependabot/fetch-metadata@v2
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build changelog diff comment
+        id: diff
+        run: |
+          PKG="${{ steps.meta.outputs.dependency-names }}"
+          FROM="${{ steps.meta.outputs.previous-version }}"
+          TO="${{ steps.meta.outputs.new-version }}"
+          TYPE="${{ steps.meta.outputs.update-type }}"
+          ECOSYSTEM="${{ steps.meta.outputs.package-ecosystem }}"
+
+          BODY="## 📦 Dependency update: \`${PKG}\`
+
+          | Field | Value |
+          |---|---|
+          | Package | \`${PKG}\` |
+          | Ecosystem | ${ECOSYSTEM} |
+          | Previous version | \`${FROM}\` |
+          | New version | \`${TO}\` |
+          | Update type | ${TYPE} |
+          "
+
+          # Append npm changelog link for JS deps
+          if [[ "$ECOSYSTEM" == "npm" ]]; then
+            NPG=$(echo "$PKG" | sed 's|@||g;s|/|%2F|g')
+            BODY="${BODY}
+          [View on npm](https://www.npmjs.com/package/${PKG}/v/${TO}) · [Changelog on GitHub](https://github.com/search?q=${NPG}+changelog&type=repositories)"
+          fi
+
+          # Append crates.io link for Rust deps
+          if [[ "$ECOSYSTEM" == "cargo" ]]; then
+            BODY="${BODY}
+          [View on crates.io](https://crates.io/crates/${PKG}/${TO})"
+          fi
+
+          # Escape for GitHub output
+          EOF=$(dd if=/dev/urandom bs=15 count=1 status=none | base64)
+          echo "body<<${EOF}" >> "$GITHUB_OUTPUT"
+          echo "${BODY}" >> "$GITHUB_OUTPUT"
+          echo "${EOF}" >> "$GITHUB_OUTPUT"
+
+      - name: Post changelog diff comment
+        uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          header: dependency-changelog
+          message: ${{ steps.diff.outputs.body }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # ── Auto-merge patch updates when all checks pass ─────────────────────────
   auto-merge:
     name: Auto-merge patch updates
-    runs-on: ubuntu-latest
-    needs: security-audit
+    needs: [rust-matrix, frontend-matrix, security-audit]
     if: |
       github.actor == 'dependabot[bot]' &&
       contains(github.event.pull_request.labels.*.name, 'dependencies')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
     steps:
       - name: Fetch Dependabot metadata
         id: meta
@@ -50,7 +176,7 @@ jobs:
           PR_URL: ${{ github.event.pull_request.html_url }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Label minor/major updates for review
+      - name: Label minor/major for manual review
         if: steps.meta.outputs.update-type != 'version-update:semver-patch'
         run: gh pr edit "$PR_URL" --add-label "needs-review"
         env:
