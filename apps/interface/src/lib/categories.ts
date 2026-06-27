@@ -5,7 +5,7 @@ export interface Category {
   description: string;
 }
 
-export const CATEGORY_TAXONOMY: Category[] = [
+export const CATEGORY_TAXONOMY: readonly Category[] = [
   {
     slug: "technology",
     label: "Technology",
@@ -26,7 +26,7 @@ export const CATEGORY_TAXONOMY: Category[] = [
   },
   {
     slug: "arts",
-    label: "Arts",
+    label: "Arts & Culture",
     emoji: "🎨",
     description: "Creative projects, music, film, and visual arts.",
   },
@@ -42,7 +42,19 @@ export const CATEGORY_TAXONOMY: Category[] = [
     emoji: "🤝",
     description: "Local initiatives, social causes, and community building.",
   },
-];
+  {
+    slug: "science",
+    label: "Science",
+    emoji: "🔬",
+    description: "Research, discovery, and scientific advancement.",
+  },
+  {
+    slug: "other",
+    label: "Other",
+    emoji: "✨",
+    description: "Campaigns that don't fit neatly into another category.",
+  },
+] as const;
 
 export function getCategoryBySlug(slug?: string): Category | undefined {
   if (!slug) return undefined;
