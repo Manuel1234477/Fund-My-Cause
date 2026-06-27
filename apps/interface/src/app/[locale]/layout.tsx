@@ -23,6 +23,7 @@ import { ThemeApplier } from "@/components/ThemeApplier";
 import { ModalRenderer } from "@/components/ModalRenderer";
 import { ServiceWorkerRegistration } from "@/components/ServiceWorkerRegistration";
 import { CommandPaletteProvider } from "@/components/ui/CommandPaletteProvider";
+import { LimitedConnectivityBanner } from "@/components/ui/LimitedConnectivityBanner";
 
 export const metadata: Metadata = {
   title: "Fund My Cause",
@@ -64,6 +65,7 @@ export default async function LocaleLayout({
       <body>
         <ServiceWorkerRegistration />
         <SkipNav />
+        <LimitedConnectivityBanner />
         <ErrorBoundary level="page">
           <ErrorHandlerInitializer />
           <NextIntlClientProvider messages={messages}>

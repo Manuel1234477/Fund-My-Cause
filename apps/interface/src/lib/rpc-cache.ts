@@ -105,3 +105,47 @@ export function cacheStats(): CacheStats {
   }
   return { hits, misses, size: store.size, staticSize };
 }
+
+// ── RPC connectivity / degradation tracking ─────────────────────────────────
+
+/** Number of consecutive RPC failures before the UI considers connectivity limited. */
+export const RPC_FAILURE_THRESHOLD = 3;
+
+let consecutiveFailures = 0;
+let limitedConnectivity = false;
+const connectivityListeners = new Set<(limited: boolean) => void>();
+
+/** Record a successful RPC call. Resets failure counter and clears degraded state. */
+export function rpcSuccess(): void {
+  consecutiveFailures = 0;
+  if (limitedConnectivity) {
+    limitedConnectivity = false;
+    connectivityListeners.forEach((fn) => fn(false));
+  }
+}
+
+/** Record a failed RPC call. After RPC_FAILURE_THRESHOLD failures, marks connectivity as limited. */
+export function rpcFailure(): void {
+  consecutiveFailures++;
+  if (!limitedConnectivity && consecutiveFailures >= RPC_FAILURE_THRESHOLD) {
+    limitedConnectivity = true;
+    connectivityListeners.forEach((fn) => fn(true));
+  }
+}
+
+/** Returns true when the RPC is currently considered degraded. */
+export function isRpcLimited(): boolean {
+  return limitedConnectivity;
+}
+
+/** Subscribe to connectivity changes. Returns an unsubscribe function. */
+export function onConnectivityChange(fn: (limited: boolean) => void): () => void {
+  connectivityListeners.add(fn);
+  return () => connectivityListeners.delete(fn);
+}
+
+/** Reset degradation state (useful in tests). */
+export function rpcReset(): void {
+  consecutiveFailures = 0;
+  limitedConnectivity = false;
+}

@@ -2,31 +2,67 @@
 
 import React from "react";
 import { CampaignData } from "@/types/soroban";
+import { useTheme } from "@/context/ThemeContext";
 
 interface LineChartProps {
   campaigns: CampaignData[];
 }
 
+/** Theme-aware colour palette for LineChart. */
+export function getLineChartPalette(theme: "dark" | "light") {
+  return theme === "dark"
+    ? {
+        background: "bg-gray-900",
+        border: "border-gray-800",
+        title: "text-gray-300",
+        legend: "text-gray-400",
+        gridStroke: "#374151",
+        lineStart: "#6366f1",
+        lineEnd: "#8b5cf6",
+        dotFill: "#6366f1",
+        axisLabel: "#9ca3af",
+      }
+    : {
+        background: "bg-white",
+        border: "border-gray-200",
+        title: "text-gray-700",
+        legend: "text-gray-600",
+        gridStroke: "#e5e7eb",
+        lineStart: "#4f46e5",
+        lineEnd: "#7c3aed",
+        dotFill: "#4f46e5",
+        axisLabel: "#6b7280",
+      };
+}
+
 export function LineChart({ campaigns }: LineChartProps) {
+  const { theme } = useTheme();
+  const palette = getLineChartPalette(theme);
+
   if (campaigns.length === 0) return null;
 
-  // Generate mock time-series data based on campaign progress
-  const dataPoints = campaigns.map((campaign, index) => ({
+  const dataPoints = campaigns.map((campaign) => ({
     label: campaign.title.substring(0, 15),
     value: campaign.raised,
     goal: campaign.goal,
     progress: campaign.goal > 0 ? (campaign.raised / campaign.goal) * 100 : 0,
   }));
 
-  const maxValue = Math.max(...dataPoints.map((d) => d.value), 1);
+  const gradientId = `line-gradient-${theme}`;
 
   return (
-    <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5">
-      <h3 className="text-sm font-semibold text-gray-300 mb-4">Funding Progress Over Time</h3>
-      
-      {/* SVG Line Chart */}
+    <div className={`${palette.background} border ${palette.border} rounded-2xl p-5`}>
+      <h3 className={`text-sm font-semibold ${palette.title} mb-4`}>Funding Progress Over Time</h3>
+
       <div className="relative h-48 w-full">
-        <svg viewBox="0 0 400 150" className="w-full h-full">
+        <svg viewBox="0 0 400 150" className="w-full h-full" role="img" aria-label="Funding progress line chart">
+          <defs>
+            <linearGradient id={gradientId} x1="0%" y1="0%" x2="100%" y2="0%">
+              <stop offset="0%" stopColor={palette.lineStart} />
+              <stop offset="100%" stopColor={palette.lineEnd} />
+            </linearGradient>
+          </defs>
+
           {/* Grid lines */}
           {[0, 25, 50, 75, 100].map((pct) => (
             <line
@@ -35,24 +71,40 @@ export function LineChart({ campaigns }: LineChartProps) {
               y1={150 - (pct / 100) * 150}
               x2="400"
               y2={150 - (pct / 100) * 150}
-              stroke="#374151"
+              stroke={palette.gridStroke}
               strokeWidth="1"
               strokeDasharray="4"
             />
           ))}
-          
+
+          {/* Y-axis labels */}
+          {[0, 50, 100].map((pct) => (
+            <text
+              key={pct}
+              x="4"
+              y={150 - (pct / 100) * 150 - 3}
+              fontSize="10"
+              fill={palette.axisLabel}
+              aria-hidden="true"
+            >
+              {pct}%
+            </text>
+          ))}
+
           {/* Progress line */}
           <polyline
             fill="none"
-            stroke="url(#gradient)"
+            stroke={`url(#${gradientId})`}
             strokeWidth="2"
-            points={dataPoints.map((d, i) => {
-              const x = (i / (dataPoints.length - 1 || 1)) * 400;
-              const y = 150 - (d.progress / 100) * 150;
-              return `${x},${y}`;
-            }).join(" ")}
+            points={dataPoints
+              .map((d, i) => {
+                const x = (i / (dataPoints.length - 1 || 1)) * 400;
+                const y = 150 - (d.progress / 100) * 150;
+                return `${x},${y}`;
+              })
+              .join(" ")}
           />
-          
+
           {/* Data points */}
           {dataPoints.map((d, i) => {
             const x = (i / (dataPoints.length - 1 || 1)) * 400;
@@ -63,19 +115,13 @@ export function LineChart({ campaigns }: LineChartProps) {
                 cx={x}
                 cy={y}
                 r="4"
-                fill="#6366f1"
-                className="hover:r-6 transition-all cursor-pointer"
-              />
+                fill={palette.dotFill}
+                className="cursor-pointer"
+              >
+                <title>{`${d.label}: ${d.progress.toFixed(1)}%`}</title>
+              </circle>
             );
           })}
-          
-          {/* Gradient definition */}
-          <defs>
-            <linearGradient id="gradient" x1="0%" y1="0%" x2="100%" y2="0%">
-              <stop offset="0%" stopColor="#6366f1" />
-              <stop offset="100%" stopColor="#8b5cf6" />
-            </linearGradient>
-          </defs>
         </svg>
       </div>
 
@@ -83,12 +129,12 @@ export function LineChart({ campaigns }: LineChartProps) {
       <div className="mt-4 flex flex-wrap gap-4">
         {dataPoints.slice(0, 5).map((d, i) => (
           <div key={i} className="flex items-center gap-2">
-            <div className="w-3 h-3 rounded-full bg-indigo-500" />
-            <span className="text-xs text-gray-400">{d.label}</span>
+            <div className="w-3 h-3 rounded-full" style={{ backgroundColor: palette.dotFill }} />
+            <span className={`text-xs ${palette.legend}`}>{d.label}</span>
           </div>
         ))}
         {dataPoints.length > 5 && (
-          <span className="text-xs text-gray-500">+{dataPoints.length - 5} more</span>
+          <span className={`text-xs ${palette.legend} opacity-60`}>+{dataPoints.length - 5} more</span>
         )}
       </div>
     </div>

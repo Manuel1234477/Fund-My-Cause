@@ -23,7 +23,7 @@ import {
 import { isValidContractId } from "@/lib/validation";
 import type { SignFn } from "@/types/contract";
 import { ContractError } from "@/types/contract";
-import { cacheGet, cacheSet, cacheInvalidateLive } from "@/lib/rpc-cache";
+import { cacheGet, cacheSet, cacheInvalidateLive, rpcSuccess, rpcFailure } from "@/lib/rpc-cache";
 
 // Re-export types for backward compatibility
 export type { SignFn } from "@/types/contract";
@@ -80,7 +80,7 @@ async function simulateView(
     .setTimeout(30)
     .build();
 
-  const result = await rpc.simulateTransaction(tx);
+  const result = await rpc.simulateTransaction(tx).then((r) => { rpcSuccess(); return r; }).catch((err: unknown) => { rpcFailure(); throw err; });
   if (SorobanRpc.Api.isSimulationError(result)) {
     throw new ContractError(result.error);
   }

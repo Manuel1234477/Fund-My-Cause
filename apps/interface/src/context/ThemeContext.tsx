@@ -18,6 +18,8 @@ interface ThemeContextType {
 
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
+export { ThemeContext };
+
 /**
  * Provider component for theme management.
  * Persists theme preference to localStorage and applies CSS classes to document root.
