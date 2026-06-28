@@ -13,6 +13,7 @@ import { useComparison } from "@/context/ComparisonContext";
 import { useBookmarks } from "@/context/BookmarkContext";
 import { getCategoryBySlug } from "@/lib/categories";
 import { getFallbackImage, isValidImageUri } from "@/lib/imageValidation";
+import { SIZES_CARD_THUMB } from "@/lib/imageOptimization";
 import { useTranslations } from "next-intl";
 
 export interface CampaignCardProps {
@@ -122,7 +123,7 @@ export function CampaignCard({
             alt={`${campaign.title} - campaign header image`}
             fill
             className="object-cover"
-            sizes="(max-width: 640px) 100vw, (max-width: 768px) 50vw, 33vw"
+            sizes={SIZES_CARD_THUMB}
             onError={() => setImgSrc(fallbackSrc)}
           />
         </div>
