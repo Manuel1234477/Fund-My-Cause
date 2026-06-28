@@ -53,6 +53,7 @@ function Highlight({ text, query }: { text: string; query?: string }) {
 }
 
 function StatusBadge({ status, label }: { status: "funded" | "ended"; label: string }) {
+  const icon = status === "funded" ? "✓" : "⏰";
   return (
     <span
       className={cn(
@@ -62,6 +63,7 @@ function StatusBadge({ status, label }: { status: "funded" | "ended"; label: str
           : "bg-[var(--color-surface-elevated)]/90 text-[var(--color-text-secondary)]",
       )}
     >
+      <span aria-hidden="true" className="mr-1">{icon}</span>
       {label}
     </span>
   );
