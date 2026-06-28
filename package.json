@@ -13,6 +13,11 @@
     "contracts:build": "cargo build --release --target wasm32-unknown-unknown --manifest-path contracts/crowdfund/Cargo.toml",
     "contracts:test": "cargo test --workspace",
     "test:e2e": "playwright test",
+    "test:e2e:chromium": "playwright test --project=chromium",
+    "test:e2e:firefox": "playwright test --project=firefox",
+    "test:e2e:webkit": "playwright test --project=webkit",
+    "test:e2e:ui": "playwright test --ui",
+    "test:e2e:debug": "playwright test --debug",
     "format": "cd apps/interface && npx prettier --write",
     "prepare": "husky"
   },
