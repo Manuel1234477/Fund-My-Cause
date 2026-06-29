@@ -2,6 +2,19 @@
 
 Thank you for your interest in contributing to Fund-My-Cause! We welcome contributions from the community.
 
+## 🚀 Getting Started
+
+**New to the project?** Follow our comprehensive step-by-step setup guide:
+
+👉 **[Contributor Onboarding Walkthrough](./docs/contributor-onboarding.md)** 👈
+
+This guide covers:
+- Setting up your development environment
+- Building and testing smart contracts
+- Running the frontend locally
+- Working with the backend/indexer stack
+- Common troubleshooting tips
+
 ## Code of Conduct
 
 This project adheres to the [Contributor Covenant Code of Conduct](https://www.contributor-covenant.org/). By participating, you are expected to uphold this code. Please report unacceptable behavior to the project maintainers.

@@ -19,7 +19,8 @@ Check out our public roadmap to see what's coming next!
 
 ![System Architecture](./docs/assets/architecture.svg)
 
-> Full component details and data-flow walkthroughs: [docs/architecture.md](./docs/architecture.md)
+> Full component details and data-flow walkthroughs: [docs/architecture.md](./docs/architecture.md)  
+> Backend & indexer architecture: [docs/backend-architecture.md](./docs/backend-architecture.md)
 
 ---
 
