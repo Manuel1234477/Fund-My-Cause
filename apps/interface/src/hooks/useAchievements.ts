@@ -11,6 +11,7 @@ import type {
   GamificationProfile,
   AchievementUnlockedEvent,
 } from "@/types/gamification";
+import { QUERY_KEYS } from "@/lib/queryKeys";
 
 interface UseAchievementsParams {
   userAddress?: string;
@@ -218,7 +219,7 @@ export function useAchievements({
     isLoading: achievementsLoading,
     error: achievementsError,
   } = useQuery<Achievement[]>({
-    queryKey: ["achievements", userAddress],
+    queryKey: QUERY_KEYS.achievements(userAddress ?? ""),
     queryFn: () =>
       userAddress
         ? fetchUserAchievements(userAddress)
@@ -232,7 +233,7 @@ export function useAchievements({
     isLoading: progressLoading,
     error: progressError,
   } = useQuery<AchievementProgress[]>({
-    queryKey: ["achievement-progress", userAddress],
+    queryKey: QUERY_KEYS.achievementProgress(userAddress ?? ""),
     queryFn: () =>
       userAddress
         ? fetchAchievementProgress(userAddress)
@@ -246,7 +247,7 @@ export function useAchievements({
     isLoading: profileLoading,
     error: profileError,
   } = useQuery<GamificationProfile>({
-    queryKey: ["gamification-profile", userAddress],
+    queryKey: QUERY_KEYS.gamificationProfile(userAddress ?? ""),
     queryFn: () =>
       userAddress
         ? fetchGamificationProfile(userAddress)
@@ -280,13 +281,13 @@ export function useAchievements({
     },
     onSuccess: () => {
       queryClient.invalidateQueries({
-        queryKey: ["achievements", userAddress],
+        queryKey: QUERY_KEYS.achievements(userAddress ?? ""),
       });
       queryClient.invalidateQueries({
-        queryKey: ["achievement-progress", userAddress],
+        queryKey: QUERY_KEYS.achievementProgress(userAddress ?? ""),
       });
       queryClient.invalidateQueries({
-        queryKey: ["gamification-profile", userAddress],
+        queryKey: QUERY_KEYS.gamificationProfile(userAddress ?? ""),
       });
     },
   });

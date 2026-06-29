@@ -1,6 +1,7 @@
 import { useState, useCallback } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import type { Comment, CommentInput, ModerationAction } from "@/types/comment";
+import { QUERY_KEYS } from "@/lib/queryKeys";
 
 // Mock storage - in production, this would use IPFS or on-chain storage
 const COMMENTS_STORAGE_KEY = "campaign_comments";
@@ -114,14 +115,13 @@ export function useComments(campaignId: string, userAddress: string | null) {
   const queryClient = useQueryClient();
 
   const { data: comments = [], isLoading } = useQuery<Comment[]>({
-    queryKey: ["comments", campaignId],
+    queryKey: QUERY_KEYS.comments(campaignId),
     queryFn: () => {
       const allComments = getStoredComments();
       return allComments.filter(
         (c) => c.campaignId === campaignId && c.moderationStatus !== "rejected"
       );
     },
-    staleTime: 10_000,
   });
 
   const addCommentMutation = useMutation({
@@ -161,7 +161,7 @@ export function useComments(campaignId: string, userAddress: string | null) {
       return newComment;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["comments", campaignId] });
+      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.comments(campaignId) });
     },
   });
 
@@ -181,7 +181,7 @@ export function useComments(campaignId: string, userAddress: string | null) {
       return comment;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["comments", campaignId] });
+      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.comments(campaignId) });
     },
   });
 
@@ -201,7 +201,7 @@ export function useComments(campaignId: string, userAddress: string | null) {
       return comment;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["comments", campaignId] });
+      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.comments(campaignId) });
     },
   });
 
@@ -224,7 +224,7 @@ export function useComments(campaignId: string, userAddress: string | null) {
       return comment;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["comments", campaignId] });
+      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.comments(campaignId) });
     },
   });
 
@@ -240,7 +240,7 @@ export function useComments(campaignId: string, userAddress: string | null) {
       return comment;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["comments", campaignId] });
+      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.comments(campaignId) });
     },
   });
 
