@@ -162,6 +162,10 @@ jobs:
         working-directory: apps/interface
         run: npm audit --audit-level=high || true
 
+      - name: Check bundle budgets
+        working-directory: apps/interface
+        run: npm run bundle:check
+
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:

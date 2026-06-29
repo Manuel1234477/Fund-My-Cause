@@ -15,7 +15,8 @@
     "test:vitest:watch": "vitest",
     "test:vitest:coverage": "vitest run --coverage",
     "test:mutation": "stryker run",
-    "test:mutation:report": "open reports/mutation/mutation-report.html"
+    "test:mutation:report": "open reports/mutation/mutation-report.html",
+    "bundle:check": "node scripts/check-bundle-budgets.cjs"
   },
   "dependencies": {
     "@fund-my-cause/types": "*",
