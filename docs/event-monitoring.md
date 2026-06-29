@@ -13,6 +13,40 @@ Event monitoring provides:
 
 ## Contract Events
 
+### Event Schema Versioning (#703)
+
+All events carry a `schema_version` field (current value: **1**).  Indexers
+and consumers should read this field and adapt if the version they see differs
+from what they expect.  The version is incremented whenever a field is added,
+removed, or renamed in a backwards-incompatible way.
+
+```
+Schema version history
+  v1 — initial versioned schema (issues #702-#705)
+```
+
+### Core Event Payloads
+
+| Event topic | `schema_version` | Key fields |
+|---|---|---|
+| `("campaign", "initialized")` | ✓ | `creator`, `goal`, `deadline`, `category`, `schema_version` |
+| `("campaign", "contributed")` | ✓ | `contributor`, `amount`, `new_total`, `matched_amount`, `schema_version` |
+| `("campaign", "withdrawn")` | ✓ | `creator`, `total`, `fee`, `payout`, `schema_version` |
+| `("campaign", "refunded")` | ✓ | `contributor`, `amount`, `schema_version` |
+| `("campaign", "stream_claimed")` | ✓ | `creator`, `amount`, `remaining`, `schema_version` |
+| `("campaign", "contribution_recorded")` | — | `contributor`, `amount`, `timestamp`, `running_total` |
+| `("campaign", "status_changed")` | — | `old_status`, `new_status` |
+| `("campaign", "metadata_updated")` | — | `updated_title`, `updated_description`, `updated_social_links` |
+| `("campaign", "deadline_extended")` | — | `old_deadline`, `new_deadline` |
+| `("campaign", "partial_refund")` | — | `contributor`, `amount`, `remaining` |
+| `("campaign", "rate_limit_hit")` | — | `contributor`, `attempted`, `period_amount`, `max_amount` |
+| `("campaign", "tier_assigned")` | — | `contributor`, `tier_name`, `min_amount` |
+| `("campaign", "cancelled")` | — | `creator`, `total_raised` |
+| `("campaign", "qf_contribution")` | — | `contributor`, `amount`, `cumulative`, `contributor_count` |
+
+> Events without `schema_version` carry no such field and their shape is
+> considered stable.  A future release may add versioning to additional events.
+
 ### Event Types
 
 | Event | Trigger | Data |

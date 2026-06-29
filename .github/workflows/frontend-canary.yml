@@ -1,0 +1,225 @@
+name: Frontend Canary Deployment
+
+on:
+  workflow_dispatch:
+    inputs:
+      canary_weight:
+        description: 'Initial canary traffic percentage (1-20)'
+        required: false
+        default: '10'
+      environment:
+        description: 'Target environment'
+        required: true
+        default: 'staging'
+        type: choice
+        options:
+          - staging
+          - production
+      image_tag:
+        description: 'Docker image tag to deploy as canary'
+        required: false
+        default: ''
+  push:
+    branches:
+      - main
+    paths:
+      - 'apps/interface/**'
+
+concurrency:
+  group: frontend-canary-${{ github.event.inputs.environment || 'staging' }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build Canary Image
+    runs-on: ubuntu-latest
+    outputs:
+      image_tag: ${{ steps.tag.outputs.image_tag }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Compute image tag
+        id: tag
+        run: |
+          TAG="${{ github.event.inputs.image_tag }}"
+          if [ -z "${TAG}" ]; then
+            TAG="${{ github.sha }}"
+          fi
+          echo "image_tag=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "Using image tag: ${TAG}"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build frontend image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: apps/interface/Dockerfile
+          push: false
+          tags: fund-my-cause-frontend:${{ steps.tag.outputs.image_tag }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          outputs: type=docker,dest=/tmp/frontend-image.tar
+
+      - name: Upload image artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-image-${{ steps.tag.outputs.image_tag }}
+          path: /tmp/frontend-image.tar
+          retention-days: 1
+
+  canary-deploy:
+    name: Deploy Canary
+    needs: build
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.environment || 'staging' }}
+
+    env:
+      CANARY_WEIGHT: ${{ github.event.inputs.canary_weight || '10' }}
+      ENV: ${{ github.event.inputs.environment || 'staging' }}
+      IMAGE_TAG: ${{ needs.build.outputs.image_tag }}
+      # Error-rate threshold for automatic rollback (percent, 0-100)
+      ERROR_RATE_THRESHOLD: 5
+      # Observation window in seconds before promoting or rolling back
+      OBSERVATION_WINDOW: 120
+      HEALTH_CHECK_INTERVAL: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download frontend image
+        uses: actions/download-artifact@v4
+        with:
+          name: frontend-image-${{ env.IMAGE_TAG }}
+          path: /tmp
+
+      - name: Load Docker image
+        run: docker load --input /tmp/frontend-image.tar
+
+      - name: Deploy stable instance (port 3000)
+        run: |
+          # Ensure stable instance is running (represents the current production)
+          docker stop fmc-stable 2>/dev/null || true
+          docker rm fmc-stable 2>/dev/null || true
+          docker run -d \
+            --name fmc-stable \
+            -p 3000:3000 \
+            --env-file apps/interface/.env.example \
+            fund-my-cause-frontend:${{ env.IMAGE_TAG }}
+          echo "Stable instance started on port 3000"
+
+      - name: Deploy canary instance (port 3001)
+        run: |
+          docker stop fmc-canary 2>/dev/null || true
+          docker rm fmc-canary 2>/dev/null || true
+          docker run -d \
+            --name fmc-canary \
+            -p 3001:3000 \
+            --env-file apps/interface/.env.example \
+            fund-my-cause-frontend:${{ env.IMAGE_TAG }}
+          echo "Canary instance started on port 3001 (weight: ${{ env.CANARY_WEIGHT }}%)"
+
+      - name: Wait for canary to be ready
+        run: |
+          ./scripts/canary-frontend.sh wait_ready 3001
+
+      - name: Run canary smoke tests
+        id: smoke_tests
+        run: |
+          ./scripts/canary-frontend.sh smoke_test 3001
+
+      - name: Monitor canary error rate
+        id: monitor
+        run: |
+          ./scripts/canary-frontend.sh monitor \
+            --port 3001 \
+            --duration "${{ env.OBSERVATION_WINDOW }}" \
+            --interval "${{ env.HEALTH_CHECK_INTERVAL }}" \
+            --error-threshold "${{ env.ERROR_RATE_THRESHOLD }}"
+
+      - name: Promote canary to stable
+        if: steps.monitor.outputs.rollback != 'true'
+        run: |
+          echo "✅ Canary healthy — promoting to stable"
+          ./scripts/canary-frontend.sh promote \
+            --stable-port 3000 \
+            --canary-port 3001 \
+            --image-tag "${{ env.IMAGE_TAG }}"
+
+      - name: Auto-rollback on error regression
+        if: failure() || steps.monitor.outputs.rollback == 'true'
+        run: |
+          echo "❌ Error-rate regression detected — rolling back canary"
+          ./scripts/canary-frontend.sh rollback --canary-port 3001
+          docker stop fmc-canary 2>/dev/null || true
+          docker rm fmc-canary 2>/dev/null || true
+
+      - name: Notify Slack on rollback
+        if: failure() || steps.monitor.outputs.rollback == 'true'
+        uses: slackapi/slack-github-action@v1.26.0
+        with:
+          payload: |
+            {
+              "text": "🔄 *Canary Rollback — Fund-My-Cause Frontend*",
+              "attachments": [
+                {
+                  "color": "danger",
+                  "fields": [
+                    {"title": "Environment", "value": "${{ env.ENV }}", "short": true},
+                    {"title": "Image", "value": "${{ env.IMAGE_TAG }}", "short": true},
+                    {"title": "Reason", "value": "Error rate exceeded ${{ env.ERROR_RATE_THRESHOLD }}% threshold", "short": false},
+                    {"title": "Run", "value": "<${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Details>", "short": false}
+                  ]
+                }
+              ]
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          SLACK_WEBHOOK_TYPE: INCOMING_WEBHOOK
+
+      - name: Notify Slack on promotion
+        if: success() && steps.monitor.outputs.rollback != 'true'
+        uses: slackapi/slack-github-action@v1.26.0
+        with:
+          payload: |
+            {
+              "text": "✅ *Canary Promoted — Fund-My-Cause Frontend*",
+              "attachments": [
+                {
+                  "color": "good",
+                  "fields": [
+                    {"title": "Environment", "value": "${{ env.ENV }}", "short": true},
+                    {"title": "Image", "value": "${{ env.IMAGE_TAG }}", "short": true},
+                    {"title": "Canary Weight", "value": "${{ env.CANARY_WEIGHT }}%", "short": true},
+                    {"title": "Error Rate", "value": "${{ steps.monitor.outputs.error_rate }}%", "short": true}
+                  ]
+                }
+              ]
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          SLACK_WEBHOOK_TYPE: INCOMING_WEBHOOK
+
+      - name: Deployment summary
+        if: always()
+        run: |
+          {
+            echo "## Frontend Canary Deployment Summary"
+            echo ""
+            echo "| Property | Value |"
+            echo "|---|---|"
+            echo "| Environment | ${{ env.ENV }} |"
+            echo "| Image Tag | ${{ env.IMAGE_TAG }} |"
+            echo "| Initial Canary Weight | ${{ env.CANARY_WEIGHT }}% |"
+            echo "| Error Rate Threshold | ${{ env.ERROR_RATE_THRESHOLD }}% |"
+            echo "| Observation Window | ${{ env.OBSERVATION_WINDOW }}s |"
+            echo "| Rollback Triggered | ${{ steps.monitor.outputs.rollback || 'false' }} |"
+            echo "| Status | ${{ job.status }} |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Cleanup artifacts
+        if: always()
+        run: |
+          docker image prune -f --filter "dangling=true" || true

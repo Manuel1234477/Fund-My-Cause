@@ -1,5 +1,5 @@
 import express, { Request, Response } from 'express';
-import { getPool } from './db/index.js';
+import { getPool, getQueryStats } from './db/index.js';
 import { createLogger } from './logger.js';
 
 const logger = createLogger('rest-api');
@@ -137,6 +137,11 @@ router.get('/stats', async (req: Request, res: Response) => {
     logger.error('Error fetching stats', err);
     res.status(500).json({ error: 'Internal server error' });
   }
+});
+
+// GET /metrics/db — query latency stats (slow-query monitoring)
+router.get('/metrics/db', (_req: Request, res: Response) => {
+  res.json(getQueryStats());
 });
 
 export default router;

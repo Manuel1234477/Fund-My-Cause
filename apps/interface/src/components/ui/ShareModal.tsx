@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useRef } from "react";
 import { X, Copy, Check, Mail, QrCode } from "lucide-react";
+import { useFocusTrap } from "@/hooks/useFocusTrap";
 
 interface ShareModalProps {
   campaignId: string;
@@ -79,11 +80,13 @@ export function ShareModal({ campaignId, campaignTitle, onClose }: ShareModalPro
   const [copied, setCopied] = useState(false);
   const [showQr, setShowQr] = useState(false);
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const trapRef = useFocusTrap(true, { onEscape: onClose }) as React.RefObject<HTMLDivElement>;
 
+  const slug = getCampaignSlug(campaignId);
   const campaignUrl =
     typeof window !== "undefined"
-      ? `${window.location.origin}/campaigns/${campaignId}`
-      : `/campaigns/${campaignId}`;
+      ? `${window.location.origin}/campaigns/${slug}`
+      : `/campaigns/${slug}`;
 
   const handleCopy = async () => {
     try {
@@ -114,9 +117,14 @@ export function ShareModal({ campaignId, campaignTitle, onClose }: ShareModalPro
       className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 px-4"
       onClick={handleBackdrop}
     >
-      <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl p-6 w-full max-w-sm space-y-5 shadow-2xl">
+      <div
+        ref={trapRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="share-modal-title"
+        className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl p-6 w-full max-w-sm space-y-5 shadow-2xl">
         <div className="flex items-center justify-between">
-          <h2 className="font-semibold text-gray-900 dark:text-white">Share Campaign</h2>
+          <h2 id="share-modal-title" className="font-semibold text-gray-900 dark:text-white">Share Campaign</h2>
           <button
             onClick={onClose}
             className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition text-gray-500"

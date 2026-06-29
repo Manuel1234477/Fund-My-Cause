@@ -5,6 +5,7 @@ import { Loader2, X } from "lucide-react";
 import { createUpdate, editUpdate } from "@/lib/updateStore";
 import type { Update } from "@/lib/updateStore";
 import { useNotifications } from "@/context/NotificationContext";
+import { useFocusTrap } from "@/hooks/useFocusTrap";
 
 const MAX_TITLE = 100;
 const MAX_BODY = 2000;
@@ -41,20 +42,15 @@ export function PostUpdateModal({
   const [state, setState] = useState<ModalState>("idle");
   const [error, setError] = useState<string | null>(null);
   const titleRef = useRef<HTMLInputElement>(null);
+  const isLocked = state === "submitting";
+  const dialogRef = useFocusTrap(true, {
+    onEscape: () => { if (!isLocked) onClose(); },
+  }) as React.RefObject<HTMLDivElement>;
 
   // Focus title on open
   useEffect(() => {
     titleRef.current?.focus();
   }, []);
-
-  // Escape key handler
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && state !== "submitting") onClose();
-    };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [onClose, state]);
 
   const isEditing = !!existingCid && !!existingUpdate;
 
@@ -104,6 +100,7 @@ export function PostUpdateModal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
       <div
+        ref={dialogRef}
         role="dialog"
         aria-modal="true"
         aria-labelledby="post-update-title"

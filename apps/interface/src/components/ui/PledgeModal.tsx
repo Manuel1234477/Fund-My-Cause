@@ -10,6 +10,7 @@ import { contribute } from "@/lib/contract";
 import { useAccountExists } from "@/hooks/useAccountExists";
 import { useTranslations } from "next-intl";
 import { computePledgeSuggestions } from "@/lib/pledgeSuggestions";
+import { useFocusTrap } from "@/hooks/useFocusTrap";
 
 const XLM_TO_STROOPS = 10_000_000n;
 const PLEDGE_DEBOUNCE_MS = 2000;
@@ -58,41 +59,21 @@ export function PledgeModal({
   const [pendingTx, setPendingTx] = useState(false);
   const [showReceipt, setShowReceipt] = useState(false);
   const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
-  const dialogRef = useRef<HTMLDivElement>(null);
   const titleId = "pledge-modal-title";
 
-  // Focus trap
+  // Clear debounce timer on unmount to prevent memory leak (#746)
   useEffect(() => {
-    const el = dialogRef.current;
-    if (!el) return;
-    const focusable = el.querySelectorAll<HTMLElement>(
-      'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
-    );
-    const first = focusable[0];
-    const last = focusable[focusable.length - 1];
-    first?.focus();
+    return () => {
+      if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+    };
+  }, []);
 
-    function handleKeyDown(e: KeyboardEvent) {
-      if (e.key === "Escape") {
-        onClose();
-        return;
-      }
-      if (e.key !== "Tab") return;
-      if (e.shiftKey) {
-        if (document.activeElement === first) {
-          e.preventDefault();
-          last?.focus();
-        }
-      } else {
-        if (document.activeElement === last) {
-          e.preventDefault();
-          first?.focus();
-        }
-      }
-    }
-    el.addEventListener("keydown", handleKeyDown);
-    return () => el.removeEventListener("keydown", handleKeyDown);
-  }, [onClose]);
+  const isProcessingRef = useRef(false);
+  const dialogRef = useFocusTrap(true, {
+    onEscape: () => {
+      if (!isProcessingRef.current) onClose();
+    },
+  }) as React.RefObject<HTMLDivElement>;
 
   const minXlm = Number(minContribution) / 1e7;
 
@@ -170,6 +151,7 @@ export function PledgeModal({
   };
 
   const isProcessing = txStatus !== "idle" || pendingTx || isSigning;
+  isProcessingRef.current = isProcessing;
 
   return (
     // Backdrop: closes modal on click. Keyboard dismissal (Escape) is handled by the focus trap inside the dialog.

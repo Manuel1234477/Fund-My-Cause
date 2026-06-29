@@ -1,0 +1,104 @@
+name: Reproducible WASM Build
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'contracts/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'rust-toolchain.toml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'contracts/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'rust-toolchain.toml'
+
+jobs:
+  reproducible-build:
+    name: Verify reproducible WASM
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # rust-toolchain.toml pins the exact channel; no extra args needed
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ '1.86.0' }}
+          targets: wasm32-unknown-unknown
+
+      - uses: Swatinem/rust-cache@v2
+
+      # ── Build 1 ────────────────────────────────────────────────────────────
+      - name: Build (pass 1)
+        run: cargo build --release --target wasm32-unknown-unknown
+
+      - name: Hash pass-1 artifacts
+        id: hash1
+        run: |
+          mkdir -p /tmp/wasm-pass1
+          for wasm in target/wasm32-unknown-unknown/release/*.wasm; do
+            name=$(basename "$wasm")
+            cp "$wasm" "/tmp/wasm-pass1/$name"
+            sha256sum "$wasm"
+          done
+          sha256sum target/wasm32-unknown-unknown/release/*.wasm > /tmp/pass1.sha256
+          echo "Contents of pass1.sha256:"
+          cat /tmp/pass1.sha256
+
+      # ── Clean & build again ────────────────────────────────────────────────
+      - name: Clean build artifacts
+        run: cargo clean --target-dir target
+
+      - name: Build (pass 2)
+        run: cargo build --release --target wasm32-unknown-unknown
+
+      - name: Hash pass-2 artifacts
+        run: |
+          sha256sum target/wasm32-unknown-unknown/release/*.wasm > /tmp/pass2.sha256
+          echo "Contents of pass2.sha256:"
+          cat /tmp/pass2.sha256
+
+      # ── Compare ───────────────────────────────────────────────────────────
+      - name: Verify hashes match
+        run: |
+          if diff /tmp/pass1.sha256 /tmp/pass2.sha256; then
+            echo "✅ Reproducible: both builds produced identical hashes."
+          else
+            echo "❌ Non-reproducible: hashes differ between builds!"
+            diff /tmp/pass1.sha256 /tmp/pass2.sha256
+            exit 1
+          fi
+
+      # ── Publish hash artifact ─────────────────────────────────────────────
+      - name: Prepare hash artifact
+        run: |
+          mkdir -p /tmp/wasm-hashes
+          cp /tmp/pass1.sha256 /tmp/wasm-hashes/wasm-hashes.sha256
+
+          {
+            echo "## WASM Reproducible Build Report"
+            echo ""
+            echo "**Toolchain:** $(rustc --version)"
+            echo "**Commit:** ${{ github.sha }}"
+            echo "**Run:** [${{ github.run_id }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})"
+            echo ""
+            echo "| Contract | SHA-256 |"
+            echo "|---|---|"
+            while IFS= read -r line; do
+              hash=$(echo "$line" | awk '{print $1}')
+              name=$(basename "$(echo "$line" | awk '{print $2}')")
+              echo "| \`$name\` | \`$hash\` |"
+            done < /tmp/pass1.sha256
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          cp "$GITHUB_STEP_SUMMARY" /tmp/wasm-hashes/build-report.md 2>/dev/null || true
+
+      - name: Upload WASM hash artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: wasm-hashes-${{ github.sha }}
+          path: /tmp/wasm-hashes/
+          retention-days: 90

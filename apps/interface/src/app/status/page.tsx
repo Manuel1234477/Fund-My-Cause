@@ -42,12 +42,18 @@ function StatusBadge({ status }: { status: string }) {
     degraded:  "bg-yellow-500",
     unhealthy: "bg-red-500",
   };
+  const icons: Record<string, string> = {
+    healthy: "✓",
+    degraded: "⚠",
+    unhealthy: "✗",
+  };
   const cls = colours[status] ?? colours.unhealthy;
   const d   = dot[status]     ?? dot.unhealthy;
   return (
     <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-medium ${cls}`}>
-      <span className={`h-2 w-2 rounded-full ${d}`} />
-      {status}
+      <span className={`h-2 w-2 rounded-full ${d}`} aria-hidden="true" />
+      <span aria-hidden="true">{icons[status] ?? ""}</span>
+      <span>{status}</span>
     </span>
   );
 }

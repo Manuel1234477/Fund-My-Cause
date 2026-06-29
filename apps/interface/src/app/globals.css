@@ -144,6 +144,13 @@ body {
   border-color: var(--color-brand);
 }
 
+/* ── Funding ticker scroll ────────────────────────────────────────────────── */
+
+@keyframes ticker-scroll {
+  0%   { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
+}
+
 /* ── Animations ───────────────────────────────────────────────────────────── */
 
 @keyframes shimmer {

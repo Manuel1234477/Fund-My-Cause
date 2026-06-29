@@ -1,7 +1,8 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect } from "react";
 import { Loader2, X, Clock } from "lucide-react";
+import { useFocusTrap } from "@/hooks/useFocusTrap";
 
 interface ExtensionRecord {
   date: string;
@@ -53,23 +54,16 @@ export function DeadlineExtensionModal({
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [history, setHistory] = useState<ExtensionRecord[]>([]);
-  const triggerRef = useRef<Element | null>(null);
+
+  const savingRef = React.useRef(saving);
+  savingRef.current = saving;
+  const dialogRef = useFocusTrap(true, {
+    onEscape: () => { if (!savingRef.current) onClose(); },
+  }) as React.RefObject<HTMLDivElement>;
 
   useEffect(() => {
-    triggerRef.current = document.activeElement;
     setHistory(getHistory(contractId));
-    return () => {
-      (triggerRef.current as HTMLElement | null)?.focus();
-    };
   }, [contractId]);
-
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && !saving) onClose();
-    };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [onClose, saving]);
 
   const handleExtend = async () => {
     if (!newDate) {
@@ -108,6 +102,7 @@ export function DeadlineExtensionModal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
       <div
+        ref={dialogRef}
         role="dialog"
         aria-modal="true"
         aria-labelledby="extend-deadline-title"

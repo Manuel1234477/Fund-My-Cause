@@ -130,4 +130,25 @@ pub enum ContractError {
     NotFound = 59,
     /// Invalid campaign category
     InvalidCategory = 60,
+    // ── Issue #702: Per-contributor cap ──────────────────────────────────────
+    /// Contribution would push this contributor's total above the per-contributor cap
+    ContributorCapExceeded = 61,
+    // ── Issue #704: Withdrawal streaming ─────────────────────────────────────
+    /// No streaming configuration set for this campaign
+    StreamNotConfigured = 62,
+    /// The requested stream claim amount exceeds what has unlocked so far
+    StreamNotYetClaimable = 63,
+    /// Nothing left to claim (fully claimed or zero claimable)
+    StreamFullyClaimed = 64,
+    // ── Issue #705: Improved error granularity ────────────────────────────────
+    /// Campaign is not in the correct state for this operation (replaces generic NotActive for mismatched states)
+    WrongCampaignState = 65,
+    /// The operation requires the campaign deadline to have passed
+    DeadlineNotReached = 66,
+    /// The contributor has no contribution to refund
+    NoContributionToRefund = 67,
+    /// Initialization parameters are invalid (replaces generic InvalidInput for init)
+    InvalidInitParams = 68,
+    /// The withdrawal has already been executed (campaign already paid out)
+    AlreadyWithdrawn = 69,
 }

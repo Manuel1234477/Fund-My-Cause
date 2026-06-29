@@ -1,9 +1,18 @@
 "use client";
 
 import React, { useState } from "react";
-import { MessageSquare, ThumbsUp, ThumbsDown, Reply, Flag, Trash2, Send } from "lucide-react";
+import {
+  MessageSquare,
+  ThumbsUp,
+  ThumbsDown,
+  Reply,
+  Flag,
+  Trash2,
+  Send,
+} from "lucide-react";
 import type { Comment } from "@/types/comment";
 import { formatAddress } from "@/lib/format";
+import { sanitizeComment } from "@/lib/sanitize";
 import { useWallet } from "@/context/WalletContext";
 
 interface Props {
@@ -17,7 +26,7 @@ interface Props {
 }
 
 export function CommentSection({
-  campaignId,
+  campaignId: _campaignId,
   comments,
   onAddComment,
   onVote,
@@ -31,10 +40,10 @@ export function CommentSection({
   const [replyContent, setReplyContent] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const topLevelComments = comments.filter(c => !c.parentId && !c.isDeleted);
+  const topLevelComments = comments.filter((c) => !c.parentId && !c.isDeleted);
 
   const getReplies = (parentId: string) =>
-    comments.filter(c => c.parentId === parentId && !c.isDeleted);
+    comments.filter((c) => c.parentId === parentId && !c.isDeleted);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -42,7 +51,7 @@ export function CommentSection({
 
     setIsSubmitting(true);
     try {
-      await onAddComment(newComment.trim());
+      await onAddComment(sanitizeComment(newComment.trim()));
       setNewComment("");
     } finally {
       setIsSubmitting(false);
@@ -54,7 +63,7 @@ export function CommentSection({
 
     setIsSubmitting(true);
     try {
-      await onAddComment(replyContent.trim(), parentId);
+      await onAddComment(sanitizeComment(replyContent.trim()), parentId);
       setReplyContent("");
       setReplyTo(null);
     } finally {
@@ -62,7 +71,13 @@ export function CommentSection({
     }
   };
 
-  const CommentItem = ({ comment, isReply = false }: { comment: Comment; isReply?: boolean }) => {
+  const CommentItem = ({
+    comment,
+    isReply = false,
+  }: {
+    comment: Comment;
+    isReply?: boolean;
+  }) => {
     const replies = getReplies(comment.id);
     const isAuthor = address === comment.author;
     const score = comment.upvotes - comment.downvotes;
@@ -77,13 +92,20 @@ export function CommentSection({
                 className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700 transition"
                 aria-label="Upvote"
               >
-                <ThumbsUp size={14} className="text-gray-500 dark:text-gray-400" />
+                <ThumbsUp
+                  size={14}
+                  className="text-gray-500 dark:text-gray-400"
+                />
               </button>
-              <span className={`text-xs font-medium ${
-                score > 0 ? "text-green-600 dark:text-green-400" :
-                score < 0 ? "text-red-600 dark:text-red-400" :
-                "text-gray-500 dark:text-gray-400"
-              }`}>
+              <span
+                className={`text-xs font-medium ${
+                  score > 0
+                    ? "text-green-600 dark:text-green-400"
+                    : score < 0
+                      ? "text-red-600 dark:text-red-400"
+                      : "text-gray-500 dark:text-gray-400"
+                }`}
+              >
                 {score}
               </span>
               <button
@@ -91,13 +113,18 @@ export function CommentSection({
                 className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700 transition"
                 aria-label="Downvote"
               >
-                <ThumbsDown size={14} className="text-gray-500 dark:text-gray-400" />
+                <ThumbsDown
+                  size={14}
+                  className="text-gray-500 dark:text-gray-400"
+                />
               </button>
             </div>
 
             <div className="flex-1 space-y-2">
               <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
-                <span className="font-mono">{formatAddress(comment.author)}</span>
+                <span className="font-mono">
+                  {formatAddress(comment.author)}
+                </span>
                 {isAuthor && (
                   <span className="px-1.5 py-0.5 rounded bg-indigo-100 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400 font-semibold">
                     You
@@ -175,7 +202,7 @@ export function CommentSection({
 
         {replies.length > 0 && (
           <div className="space-y-2 mt-2">
-            {replies.map(reply => (
+            {replies.map((reply) => (
               <CommentItem key={reply.id} comment={reply} isReply />
             ))}
           </div>
@@ -198,8 +225,11 @@ export function CommentSection({
     <section aria-labelledby="comments-heading" className="space-y-4">
       <div className="flex items-center gap-2">
         <MessageSquare size={20} className="text-gray-600 dark:text-gray-400" />
-        <h3 id="comments-heading" className="text-base font-semibold text-gray-900 dark:text-white">
-          Discussion ({comments.filter(c => !c.isDeleted).length})
+        <h3
+          id="comments-heading"
+          className="text-base font-semibold text-gray-900 dark:text-white"
+        >
+          Discussion ({comments.filter((c) => !c.isDeleted).length})
         </h3>
       </div>
 
@@ -233,7 +263,7 @@ export function CommentSection({
             No comments yet. Be the first to share your thoughts!
           </p>
         ) : (
-          topLevelComments.map(comment => (
+          topLevelComments.map((comment) => (
             <CommentItem key={comment.id} comment={comment} />
           ))
         )}

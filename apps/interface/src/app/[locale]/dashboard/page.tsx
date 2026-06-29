@@ -61,11 +61,20 @@ const STATUS_STYLES: Record<CampaignStatus, string> = {
   Paused: "bg-slate-800 text-slate-300",
 };
 
+const STATUS_ICONS: Record<CampaignStatus, string> = {
+  Active: "●",
+  Successful: "✓",
+  Refunded: "↩",
+  Cancelled: "✗",
+  Paused: "⏸",
+};
+
 function StatusBadge({ status }: { status: CampaignStatus }) {
   return (
     <span
-      className={`rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_STYLES[status]}`}
+      className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_STYLES[status]}`}
     >
+      <span aria-hidden="true">{STATUS_ICONS[status]}</span>
       {status}
     </span>
   );

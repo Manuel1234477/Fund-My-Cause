@@ -5,6 +5,7 @@ import { Navbar } from "@/components/layout/Navbar";
 import { ProgressBar } from "@/components/ui/ProgressBar";
 import { CountdownTimer } from "@/components/ui/CountdownTimer";
 import { RecommendedSection } from "@/components/ui/RecommendedSection";
+import { FundingTicker } from "@/components/ui/FundingTicker";
 import { Rocket, Users, Coins, ArrowRight, PlusCircle } from "lucide-react";
 import { formatTimeLeft } from "@/lib/format";
 import {
@@ -134,6 +135,9 @@ export default function Home() {
           ))}
         </div>
       </section>
+
+      {/* ── Live funding ticker ── */}
+      <FundingTicker />
 
       {/* ── Featured campaigns ── */}
       <section className="max-w-6xl mx-auto px-6 py-16">

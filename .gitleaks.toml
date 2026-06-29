@@ -1,0 +1,34 @@
+title = "Fund-My-Cause Gitleaks Config"
+
+[extend]
+# Use gitleaks default rules as base
+useDefault = true
+
+[[rules]]
+description = "Stellar Private Key"
+regex = '''S[A-Z2-7]{55}'''
+tags = ["stellar", "key"]
+
+[allowlist]
+description = "Allowlist for known false positives"
+regexes = [
+  # Test/example keys in docs and tests
+  '''SCZANGBA_EXAMPLE''',
+  # Placeholder values
+  '''your[_-]?secret[_-]?here''',
+  '''<YOUR_''',
+  '''example\.com''',
+]
+files = [
+  # Test snapshots contain encoded data
+  '''test_snapshots/.*\.json''',
+  # Lock files
+  '''.*\.lock''',
+  # Docs may contain example keys
+  '''docs/.*''',
+  '''.*\.md''',
+  '''\.secrets\.baseline''',
+]
+paths = [
+  '''contracts/crowdfund/test_snapshots''',
+]

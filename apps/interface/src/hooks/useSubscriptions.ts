@@ -1,168 +1,210 @@
-import { useEffect } from "react";
-import { useSubscription, type OperationVariables, type ApolloQueryResult } from "@apollo/client";
+"use client";
+
+import { useEffect, useRef } from "react";
+import { useSubscription, type OperationVariables } from "@apollo/client";
 import type { DocumentNode } from "graphql";
 
 /**
- * Custom hook for managing GraphQL subscriptions
+ * Custom hook for managing GraphQL subscriptions.
+ * Uses a stable callback ref so the subscription does not re-fire when the
+ * caller provides a new function reference on every render.
  */
-export function useGraphQLSubscription<TData = any, TVariables extends OperationVariables = OperationVariables>(
+export function useGraphQLSubscription<
+  TData = unknown,
+  TVariables extends OperationVariables = OperationVariables,
+>(
   subscription: DocumentNode,
   options?: {
     variables?: TVariables;
     onData?: (data: TData) => void;
     onError?: (error: Error) => void;
-    onComplete?: () => void;
     skip?: boolean;
-  }
+  },
 ) {
-  const { data, loading, error } = useSubscription<TData, TVariables>(subscription, {
-    variables: options?.variables,
-    skip: options?.skip,
+  const onDataRef = useRef(options?.onData);
+  const onErrorRef = useRef(options?.onError);
+
+  // Keep refs up-to-date without adding them to effect deps
+  useEffect(() => {
+    onDataRef.current = options?.onData;
+  });
+  useEffect(() => {
+    onErrorRef.current = options?.onError;
   });
 
-  useEffect(() => {
-    if (data && options?.onData) {
-      options.onData(data);
-    }
-  }, [data, options]);
+  const { data, loading, error } = useSubscription<TData, TVariables>(
+    subscription,
+    { variables: options?.variables, skip: options?.skip },
+  );
 
   useEffect(() => {
-    if (error && options?.onError) {
-      options.onError(error);
-    }
-  }, [error, options]);
+    if (data) onDataRef.current?.(data);
+  }, [data]);
+
+  useEffect(() => {
+    if (error) onErrorRef.current?.(error);
+  }, [error]);
 
   return { data, loading, error };
 }
 
 /**
- * Hook for subscribing to campaign updates
+ * Hook for subscribing to campaign updates.
+ * The `callback` is stored in a ref so a new function reference from the
+ * caller does not cause the subscription to remount.
  */
-export function useCampaignUpdates(campaignId: string | null, callback?: (update: any) => void) {
+export function useCampaignUpdates(
+  campaignId: string | null,
+  callback?: (update: unknown) => void,
+) {
+  const callbackRef = useRef(callback);
+  useEffect(() => {
+    callbackRef.current = callback;
+  });
+
   const { data, loading, error } = useSubscription(
     require("../graphql/queries.js").ON_CAMPAIGN_UPDATED,
-    {
-      variables: { id: campaignId },
-      skip: !campaignId,
-    }
+    { variables: { id: campaignId }, skip: !campaignId },
   );
 
   useEffect(() => {
-    if (data?.campaignUpdated && callback) {
-      callback(data.campaignUpdated);
-    }
-  }, [data, callback]);
+    if (data?.campaignUpdated) callbackRef.current?.(data.campaignUpdated);
+  }, [data]);
 
   return { update: data?.campaignUpdated, loading, error };
 }
 
 /**
- * Hook for subscribing to campaign status changes
+ * Hook for subscribing to campaign status changes.
  */
-export function useCampaignStatusSubscription(campaignId: string | null, callback?: (campaign: any) => void) {
+export function useCampaignStatusSubscription(
+  campaignId: string | null,
+  callback?: (campaign: unknown) => void,
+) {
+  const callbackRef = useRef(callback);
+  useEffect(() => {
+    callbackRef.current = callback;
+  });
+
   const { data, loading, error } = useSubscription(
     require("../graphql/queries.js").ON_CAMPAIGN_STATUS_CHANGED,
-    {
-      variables: { id: campaignId },
-      skip: !campaignId,
-    }
+    { variables: { id: campaignId }, skip: !campaignId },
   );
 
   useEffect(() => {
-    if (data?.campaignStatusChanged && callback) {
-      callback(data.campaignStatusChanged);
-    }
-  }, [data, callback]);
+    if (data?.campaignStatusChanged)
+      callbackRef.current?.(data.campaignStatusChanged);
+  }, [data]);
 
   return { campaign: data?.campaignStatusChanged, loading, error };
 }
 
 /**
- * Hook for subscribing to new contributions
+ * Hook for subscribing to new contributions.
  */
-export function useNewContributions(campaignId: string | null, callback?: (contribution: any) => void) {
+export function useNewContributions(
+  campaignId: string | null,
+  callback?: (contribution: unknown) => void,
+) {
+  const callbackRef = useRef(callback);
+  useEffect(() => {
+    callbackRef.current = callback;
+  });
+
   const { data, loading, error } = useSubscription(
     require("../graphql/queries.js").ON_NEW_CONTRIBUTION,
-    {
-      variables: { campaignId },
-      skip: !campaignId,
-    }
+    { variables: { campaignId }, skip: !campaignId },
   );
 
   useEffect(() => {
-    if (data?.newContribution && callback) {
-      callback(data.newContribution);
-    }
-  }, [data, callback]);
+    if (data?.newContribution) callbackRef.current?.(data.newContribution);
+  }, [data]);
 
   return { contribution: data?.newContribution, loading, error };
 }
 
 /**
- * Hook for subscribing to campaign progress changes
+ * Hook for subscribing to campaign progress changes.
  */
-export function useCampaignProgressSubscription(campaignId: string | null, callback?: (progress: any) => void) {
+export function useCampaignProgressSubscription(
+  campaignId: string | null,
+  callback?: (progress: unknown) => void,
+) {
+  const callbackRef = useRef(callback);
+  useEffect(() => {
+    callbackRef.current = callback;
+  });
+
   const { data, loading, error } = useSubscription(
     require("../graphql/queries.js").ON_CAMPAIGN_PROGRESS_CHANGED,
-    {
-      variables: { id: campaignId },
-      skip: !campaignId,
-    }
+    { variables: { id: campaignId }, skip: !campaignId },
   );
 
   useEffect(() => {
-    if (data?.campaignProgressChanged && callback) {
-      callback(data.campaignProgressChanged);
-    }
-  }, [data, callback]);
+    if (data?.campaignProgressChanged)
+      callbackRef.current?.(data.campaignProgressChanged);
+  }, [data]);
 
   return { progress: data?.campaignProgressChanged, loading, error };
 }
 
 /**
- * Hook for subscribing to milestone events
+ * Hook for subscribing to milestone events.
  */
-export function useMilestoneSubscription(campaignId: string | null, callback?: (milestone: any) => void) {
+export function useMilestoneSubscription(
+  campaignId: string | null,
+  callback?: (milestone: unknown) => void,
+) {
+  const callbackRef = useRef(callback);
+  useEffect(() => {
+    callbackRef.current = callback;
+  });
+
   const { data, loading, error } = useSubscription(
     require("../graphql/queries.js").ON_MILESTONE_REACHED,
-    {
-      variables: { campaignId },
-      skip: !campaignId,
-    }
+    { variables: { campaignId }, skip: !campaignId },
   );
 
   useEffect(() => {
-    if (data?.milestoneReached && callback) {
-      callback(data.milestoneReached);
-    }
-  }, [data, callback]);
+    if (data?.milestoneReached) callbackRef.current?.(data.milestoneReached);
+  }, [data]);
 
   return { milestone: data?.milestoneReached, loading, error };
 }
 
 /**
- * Hook for managing multiple subscriptions
+ * Hook for managing multiple subscriptions.
+ * Each subscription's `onData` is held in a ref to prevent the effect from
+ * re-running when only the callback reference changes.
  */
-export function useMultipleSubscriptions(subscriptions: Array<{
-  subscription: DocumentNode;
-  variables?: OperationVariables;
-  onData?: (data: any) => void;
-  skip?: boolean;
-}>) {
+export function useMultipleSubscriptions(
+  subscriptions: Array<{
+    subscription: DocumentNode;
+    variables?: OperationVariables;
+    onData?: (data: unknown) => void;
+    skip?: boolean;
+  }>,
+) {
+  // Keep stable refs for all callbacks
+  const callbackRefs = useRef(subscriptions.map((s) => s.onData));
+  useEffect(() => {
+    callbackRefs.current = subscriptions.map((s) => s.onData);
+  });
+
   const results = subscriptions.map((sub) =>
+    // eslint-disable-next-line react-hooks/rules-of-hooks
     useSubscription(sub.subscription, {
       variables: sub.variables,
       skip: sub.skip,
-    })
+    }),
   );
 
   useEffect(() => {
     results.forEach((result, index) => {
-      if (result.data && subscriptions[index].onData) {
-        subscriptions[index].onData?.(result.data);
-      }
+      if (result.data) callbackRefs.current[index]?.(result.data);
     });
-  }, [results, subscriptions]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [results.map((r) => r.data)]);
 
   return results.map((result) => ({
     loading: result.loading,

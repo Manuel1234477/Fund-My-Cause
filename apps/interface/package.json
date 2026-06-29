@@ -9,7 +9,7 @@
     "start": "next start",
     "lint": "eslint",
     "format": "prettier --write .",
-    "test": "jest --run",
+    "test": "jest",
     "test:coverage": "jest --coverage",
     "test:vitest": "vitest --run",
     "test:vitest:watch": "vitest",

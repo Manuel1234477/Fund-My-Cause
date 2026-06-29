@@ -3,6 +3,9 @@ import createNextIntlPlugin from "next-intl/plugin";
 
 const isDev = process.env.NODE_ENV === "development";
 
+// CDN origin for image delivery (optional — leave unset to serve from origin)
+const IMAGE_CDN_URL = process.env.NEXT_PUBLIC_IMAGE_CDN_URL ?? "";
+
 /**
  * Content Security Policy for standard app routes.
  *
@@ -25,7 +28,14 @@ const cspDefault = [
     "https://horizon-testnet.stellar.org",
     "https://api.coingecko.com",
   ].join(" "),
-  "img-src 'self' data: https://images.unsplash.com https://ipfs.io",
+  [
+    "img-src 'self' data:",
+    "https://images.unsplash.com",
+    "https://ipfs.io",
+    IMAGE_CDN_URL || null,
+  ]
+    .filter(Boolean)
+    .join(" "),
   "font-src 'self'",
   "frame-ancestors 'none'",
   "object-src 'none'",
@@ -46,7 +56,14 @@ const cspEmbed = [
     "https://horizon-testnet.stellar.org",
     "https://api.coingecko.com",
   ].join(" "),
-  "img-src 'self' data: https://images.unsplash.com https://ipfs.io",
+  [
+    "img-src 'self' data:",
+    "https://images.unsplash.com",
+    "https://ipfs.io",
+    IMAGE_CDN_URL || null,
+  ]
+    .filter(Boolean)
+    .join(" "),
   "font-src 'self'",
   "frame-ancestors *",
   "object-src 'none'",
@@ -56,11 +73,29 @@ const nextConfig: NextConfig = {
   output: "standalone",
 
   images: {
+    // Serve AVIF first (best compression), fall back to WebP, then original.
+    formats: ["image/avif", "image/webp"],
+    // Breakpoints used to generate responsive srcset variants.
+    // Aligned with RESPONSIVE_WIDTHS in imageOptimization.ts.
+    deviceSizes: [320, 480, 640, 750, 1080, 1200, 1920],
+    // Sizes for fixed-layout images (e.g. thumbnails, avatars).
+    imageSizes: [16, 32, 48, 56, 64, 96, 128, 256],
+    // Minimum cache TTL for optimised images — 30 days at the edge.
+    minimumCacheTTL: 60 * 60 * 24 * 30,
     remotePatterns: [
       { protocol: "https", hostname: "images.unsplash.com" },
       { protocol: "https", hostname: "**.ipfs.io" },
       { protocol: "https", hostname: "ipfs.io" },
       { protocol: "https", hostname: "cloudflare-ipfs.com" },
+      // Allow the configured CDN origin so next/image can serve through it.
+      ...(IMAGE_CDN_URL
+        ? [
+            {
+              protocol: "https" as const,
+              hostname: new URL(IMAGE_CDN_URL).hostname,
+            },
+          ]
+        : []),
     ],
   },
 
@@ -70,9 +105,18 @@ const nextConfig: NextConfig = {
       {
         source: "/sw.js",
         headers: [
-          { key: "Content-Type", value: "application/javascript; charset=utf-8" },
-          { key: "Cache-Control", value: "no-cache, no-store, must-revalidate" },
-          { key: "Content-Security-Policy", value: "default-src 'self'; script-src 'self'" },
+          {
+            key: "Content-Type",
+            value: "application/javascript; charset=utf-8",
+          },
+          {
+            key: "Cache-Control",
+            value: "no-cache, no-store, must-revalidate",
+          },
+          {
+            key: "Content-Security-Policy",
+            value: "default-src 'self'; script-src 'self'",
+          },
         ],
       },
       // ── Embed widget route — allow framing from any origin ──────────────────
@@ -82,13 +126,35 @@ const nextConfig: NextConfig = {
           { key: "Content-Security-Policy", value: cspEmbed },
           { key: "X-Frame-Options", value: "ALLOWALL" },
           { key: "X-Content-Type-Options", value: "nosniff" },
+          { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+          {
+            key: "Permissions-Policy",
+            value:
+              "camera=(), microphone=(), geolocation=(), push=(self), notifications=(self)",
+          },
         ],
       },
       // ── Campaign pages — cacheable, invalidate on campaign update ───────────
       {
         source: "/campaigns/:path*",
         headers: [
-          { key: "Cache-Control", value: "public, max-age=0, s-maxage=60, stale-while-revalidate=300" },
+          { key: "Content-Security-Policy", value: cspDefault },
+          { key: "X-Frame-Options", value: "DENY" },
+          { key: "X-Content-Type-Options", value: "nosniff" },
+          { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+          {
+            key: "Permissions-Policy",
+            value:
+              "camera=(), microphone=(), geolocation=(), push=(self), notifications=(self)",
+          },
+          {
+            key: "Strict-Transport-Security",
+            value: "max-age=31536000; includeSubDomains",
+          },
+          {
+            key: "Cache-Control",
+            value: "public, max-age=0, s-maxage=60, stale-while-revalidate=300",
+          },
           { key: "Surrogate-Key", value: "campaigns" },
           { key: "ETag", value: `"${Date.now()}"` },
         ],
@@ -97,15 +163,29 @@ const nextConfig: NextConfig = {
       {
         source: "/api/:path*",
         headers: [
-          { key: "Cache-Control", value: "public, max-age=0, s-maxage=120, stale-while-revalidate=600" },
+          { key: "X-Content-Type-Options", value: "nosniff" },
+          { key: "X-Frame-Options", value: "DENY" },
+          { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+          {
+            key: "Strict-Transport-Security",
+            value: "max-age=31536000; includeSubDomains",
+          },
+          {
+            key: "Cache-Control",
+            value:
+              "public, max-age=0, s-maxage=120, stale-while-revalidate=600",
+          },
           { key: "Surrogate-Key", value: "api" },
         ],
       },
       // ── Static assets (images, fonts, etc.) — long-lived cache ──────────────
       {
-        source: "/:all*(svg|png|jpg|jpeg|gif|ico|webp|woff2?|ttf|eot|css|js)",
+        source: "/:all*(svg|png|jpg|jpeg|gif|ico|webp|avif|woff2?|ttf|eot|css|js)",
         headers: [
-          { key: "Cache-Control", value: "public, max-age=31536000, immutable" },
+          {
+            key: "Cache-Control",
+            value: "public, max-age=31536000, immutable",
+          },
           { key: "Surrogate-Key", value: "assets" },
         ],
       },
@@ -117,8 +197,19 @@ const nextConfig: NextConfig = {
           { key: "X-Frame-Options", value: "DENY" },
           { key: "X-Content-Type-Options", value: "nosniff" },
           { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
-          { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=(), push=(self), notifications=(self)" },
-          { key: "Cache-Control", value: "no-cache, no-store, must-revalidate" },
+          {
+            key: "Permissions-Policy",
+            value:
+              "camera=(), microphone=(), geolocation=(), push=(self), notifications=(self)",
+          },
+          {
+            key: "Strict-Transport-Security",
+            value: "max-age=31536000; includeSubDomains",
+          },
+          {
+            key: "Cache-Control",
+            value: "no-cache, no-store, must-revalidate",
+          },
         ],
       },
     ];

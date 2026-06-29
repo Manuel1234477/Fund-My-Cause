@@ -24,12 +24,26 @@ export enum ErrorCode {
   CONTRACT_NOT_ACTIVE = "CONTRACT_NOT_ACTIVE",
   CONTRACT_BELOW_MINIMUM = "CONTRACT_BELOW_MINIMUM",
   CONTRACT_EXCEEDS_MAXIMUM = "CONTRACT_EXCEEDS_MAXIMUM",
+  // #702: distinct per-contributor cap error
+  CONTRACT_CONTRIBUTOR_CAP_EXCEEDED = "CONTRACT_CONTRIBUTOR_CAP_EXCEEDED",
   CONTRACT_INVALID_DEADLINE = "CONTRACT_INVALID_DEADLINE",
   CONTRACT_INVALID_GOAL = "CONTRACT_INVALID_GOAL",
   CONTRACT_INVALID_FEE = "CONTRACT_INVALID_FEE",
   CONTRACT_TOKEN_NOT_ACCEPTED = "CONTRACT_TOKEN_NOT_ACCEPTED",
   CONTRACT_OVERFLOW = "CONTRACT_OVERFLOW",
   CONTRACT_CALL_FAILED = "CONTRACT_CALL_FAILED",
+  // #705: more granular errors
+  CONTRACT_WRONG_STATE = "CONTRACT_WRONG_STATE",
+  CONTRACT_DEADLINE_NOT_REACHED = "CONTRACT_DEADLINE_NOT_REACHED",
+  CONTRACT_NO_CONTRIBUTION_TO_REFUND = "CONTRACT_NO_CONTRIBUTION_TO_REFUND",
+  CONTRACT_ALREADY_WITHDRAWN = "CONTRACT_ALREADY_WITHDRAWN",
+  CONTRACT_NOT_WHITELISTED = "CONTRACT_NOT_WHITELISTED",
+  CONTRACT_BLACKLISTED = "CONTRACT_BLACKLISTED",
+  CONTRACT_RATE_LIMIT_EXCEEDED = "CONTRACT_RATE_LIMIT_EXCEEDED",
+  // #704: streaming errors
+  CONTRACT_STREAM_NOT_CONFIGURED = "CONTRACT_STREAM_NOT_CONFIGURED",
+  CONTRACT_STREAM_NOT_YET_CLAIMABLE = "CONTRACT_STREAM_NOT_YET_CLAIMABLE",
+  CONTRACT_STREAM_FULLY_CLAIMED = "CONTRACT_STREAM_FULLY_CLAIMED",
   // Network errors
   NETWORK_REQUEST_FAILED = "NETWORK_REQUEST_FAILED",
   NETWORK_TIMEOUT = "NETWORK_TIMEOUT",
@@ -83,6 +97,8 @@ const USER_MESSAGES: Record<ErrorCode, string> = {
     "Your contribution is below the minimum amount.",
   [ErrorCode.CONTRACT_EXCEEDS_MAXIMUM]:
     "Your contribution exceeds the maximum allowed amount.",
+  [ErrorCode.CONTRACT_CONTRIBUTOR_CAP_EXCEEDED]:
+    "Your total contributions would exceed the per-contributor cap for this campaign.",
   [ErrorCode.CONTRACT_INVALID_DEADLINE]: "The campaign deadline is invalid.",
   [ErrorCode.CONTRACT_INVALID_GOAL]: "The campaign goal is invalid.",
   [ErrorCode.CONTRACT_INVALID_FEE]:
@@ -93,6 +109,26 @@ const USER_MESSAGES: Record<ErrorCode, string> = {
     "A calculation error occurred. Please try again.",
   [ErrorCode.CONTRACT_CALL_FAILED]:
     "The contract call failed. Please try again.",
+  [ErrorCode.CONTRACT_WRONG_STATE]:
+    "The campaign is not in the right state for this action.",
+  [ErrorCode.CONTRACT_DEADLINE_NOT_REACHED]:
+    "The campaign deadline has not passed yet.",
+  [ErrorCode.CONTRACT_NO_CONTRIBUTION_TO_REFUND]:
+    "You have no contribution to refund for this campaign.",
+  [ErrorCode.CONTRACT_ALREADY_WITHDRAWN]:
+    "The campaign funds have already been withdrawn.",
+  [ErrorCode.CONTRACT_NOT_WHITELISTED]:
+    "Your address is not on the whitelist for this campaign.",
+  [ErrorCode.CONTRACT_BLACKLISTED]:
+    "Your address has been blocked from contributing to this campaign.",
+  [ErrorCode.CONTRACT_RATE_LIMIT_EXCEEDED]:
+    "You are contributing too fast. Please wait before trying again.",
+  [ErrorCode.CONTRACT_STREAM_NOT_CONFIGURED]:
+    "No streaming schedule has been configured for this campaign.",
+  [ErrorCode.CONTRACT_STREAM_NOT_YET_CLAIMABLE]:
+    "The streaming release has not started yet.",
+  [ErrorCode.CONTRACT_STREAM_FULLY_CLAIMED]:
+    "All streamed funds have already been claimed.",
   [ErrorCode.NETWORK_REQUEST_FAILED]:
     "Network request failed. Check your connection.",
   [ErrorCode.NETWORK_TIMEOUT]: "The request timed out. Please try again.",
@@ -140,12 +176,26 @@ const CONTRACT_ERROR_PATTERNS: Array<[RegExp, ErrorCode]> = [
   [/GoalReached/i, ErrorCode.CONTRACT_GOAL_REACHED],
   [/NotActive/i, ErrorCode.CONTRACT_NOT_ACTIVE],
   [/BelowMinimum/i, ErrorCode.CONTRACT_BELOW_MINIMUM],
+  // #702: ContributorCapExceeded must come before ExceedsMaximum
+  [/ContributorCapExceeded/i, ErrorCode.CONTRACT_CONTRIBUTOR_CAP_EXCEEDED],
   [/ExceedsMaximum/i, ErrorCode.CONTRACT_EXCEEDS_MAXIMUM],
   [/InvalidDeadline/i, ErrorCode.CONTRACT_INVALID_DEADLINE],
   [/InvalidGoal/i, ErrorCode.CONTRACT_INVALID_GOAL],
   [/InvalidFee/i, ErrorCode.CONTRACT_INVALID_FEE],
   [/TokenNotAccepted/i, ErrorCode.CONTRACT_TOKEN_NOT_ACCEPTED],
   [/Overflow/i, ErrorCode.CONTRACT_OVERFLOW],
+  // #705: granular errors
+  [/WrongCampaignState/i, ErrorCode.CONTRACT_WRONG_STATE],
+  [/DeadlineNotReached/i, ErrorCode.CONTRACT_DEADLINE_NOT_REACHED],
+  [/NoContributionToRefund/i, ErrorCode.CONTRACT_NO_CONTRIBUTION_TO_REFUND],
+  [/AlreadyWithdrawn/i, ErrorCode.CONTRACT_ALREADY_WITHDRAWN],
+  [/NotWhitelisted/i, ErrorCode.CONTRACT_NOT_WHITELISTED],
+  [/Blacklisted/i, ErrorCode.CONTRACT_BLACKLISTED],
+  [/RateLimitExceeded/i, ErrorCode.CONTRACT_RATE_LIMIT_EXCEEDED],
+  // #704: streaming errors
+  [/StreamNotConfigured/i, ErrorCode.CONTRACT_STREAM_NOT_CONFIGURED],
+  [/StreamNotYetClaimable/i, ErrorCode.CONTRACT_STREAM_NOT_YET_CLAIMABLE],
+  [/StreamFullyClaimed/i, ErrorCode.CONTRACT_STREAM_FULLY_CLAIMED],
   [/HostError|contract/i, ErrorCode.CONTRACT_CALL_FAILED],
 ];
 

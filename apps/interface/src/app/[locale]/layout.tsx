@@ -76,7 +76,11 @@ export default async function LocaleLayout({
                     <CurrencyProvider>
                       <ComparisonProvider>
                         <BookmarkProvider>
-                          <WalletProvider>{children}</WalletProvider>
+                          <WalletProvider>
+                            <div id="main-content" role="main" tabIndex={-1} className="outline-none">
+                              {children}
+                            </div>
+                          </WalletProvider>
                         </BookmarkProvider>
                       </ComparisonProvider>
                     </CurrencyProvider>

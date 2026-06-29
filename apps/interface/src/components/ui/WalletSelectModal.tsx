@@ -1,7 +1,8 @@
 "use client";
 
-import React, { useEffect, useRef } from "react";
+import React from "react";
 import { X, HelpCircle } from "lucide-react";
+import { useFocusTrap } from "@/hooks/useFocusTrap";
 
 interface WalletSelectModalProps {
   onSelect: (wallet: "freighter" | "lobstr") => void;
@@ -9,27 +10,7 @@ interface WalletSelectModalProps {
 }
 
 export function WalletSelectModal({ onSelect, onClose }: WalletSelectModalProps) {
-  const dialogRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const el = dialogRef.current;
-    if (!el) return;
-    const focusable = el.querySelectorAll<HTMLElement>(
-      'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
-    );
-    const first = focusable[0];
-    const last = focusable[focusable.length - 1];
-    first?.focus();
-    const trap = (e: KeyboardEvent) => {
-      if (e.key !== "Tab") return;
-      if (e.shiftKey ? document.activeElement === first : document.activeElement === last) {
-        e.preventDefault();
-        (e.shiftKey ? last : first)?.focus();
-      }
-    };
-    el.addEventListener("keydown", trap);
-    return () => el.removeEventListener("keydown", trap);
-  }, []);
+  const dialogRef = useFocusTrap(true, { onEscape: onClose }) as React.RefObject<HTMLDivElement>;
 
   return (
     <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50" aria-modal="true">

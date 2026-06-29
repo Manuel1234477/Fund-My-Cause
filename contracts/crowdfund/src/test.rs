@@ -2081,3 +2081,185 @@ fn execute_recurring_no_plan_is_rejected() {
     let r = client.try_execute_recurring(&contributor);
     assert_eq!(r.err(), Some(Ok(ContractError::InvalidRecurringPlan)));
 }
+
+// ── Issue #702: Per-contributor cap ──────────────────────────────────────────
+
+fn setup_contract_with_cap(
+    env: &Env,
+    deadline: u64,
+    goal: i128,
+    min_contribution: i128,
+    max_contribution: i128,
+) -> (
+    Address,
+    Address,
+    CrowdfundContractClient<'_>,
+    token::StellarAssetClient<'_>,
+) {
+    env.mock_all_auths();
+    let creator = Address::generate(env);
+    let token_admin = Address::generate(env);
+    let token_id = env.register_stellar_asset_contract(token_admin.clone());
+    let token_admin_client = token::StellarAssetClient::new(env, &token_id);
+    let contract_id = env.register_contract(None, CrowdfundContract);
+    let client = CrowdfundContractClient::new(env, &contract_id);
+    client.initialize(
+        &creator,
+        &token_id,
+        &goal,
+        &deadline,
+        &min_contribution,
+        &max_contribution,
+        &String::from_str(env, "Cap Test"),
+        &String::from_str(env, "Testing contributor cap"),
+        &None,
+        &None,
+        &None,
+        &Category::Other,
+        &None,
+        &None,
+    );
+    (creator, token_id, client, token_admin_client)
+}
+
+#[test]
+fn contributor_cap_rejects_over_cap() {
+    let env = Env::default();
+    let deadline = 1_000u64;
+    let (_creator, token_id, client, token_admin_client) =
+        setup_contract_with_cap(&env, deadline, 10_000, 100, 500);
+
+    let contributor = Address::generate(&env);
+    token_admin_client.mint(&contributor, &1_000);
+
+    // First contribution within cap: ok
+    client.contribute(&contributor, &400, &token_id, &None);
+
+    // Second contribution that would push total to 600 > 500 cap: rejected
+    let r = client.try_contribute(&contributor, &200, &token_id, &None);
+    assert_eq!(r.err(), Some(Ok(ContractError::ContributorCapExceeded)));
+}
+
+#[test]
+fn contributor_cap_allows_exactly_at_boundary() {
+    let env = Env::default();
+    let deadline = 1_000u64;
+    let (_creator, token_id, client, token_admin_client) =
+        setup_contract_with_cap(&env, deadline, 10_000, 100, 500);
+
+    let contributor = Address::generate(&env);
+    token_admin_client.mint(&contributor, &500);
+
+    // Contribution exactly at cap: ok
+    client.contribute(&contributor, &500, &token_id, &None);
+    assert_eq!(client.contribution(&contributor), 500);
+}
+
+#[test]
+fn no_cap_behaves_as_before() {
+    let env = Env::default();
+    let deadline = 1_000u64;
+    // max_contribution = 0 means disabled
+    let (_creator, token_id, client, token_admin_client) =
+        setup_contract_with_cap(&env, deadline, 10_000, 100, 0);
+
+    let contributor = Address::generate(&env);
+    token_admin_client.mint(&contributor, &9_000);
+
+    // Large contribution with no cap: ok
+    client.contribute(&contributor, &9_000, &token_id, &None);
+    assert_eq!(client.contribution(&contributor), 9_000);
+}
+
+// ── Issue #704: Withdrawal streaming ─────────────────────────────────────────
+
+#[test]
+fn stream_claim_proportional_midway() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let deadline = 1_000u64;
+    let goal = 1_000i128;
+
+    let (creator, token_id, client, token_admin_client) =
+        setup_contract(&env, deadline, goal, 100);
+
+    let contributor = Address::generate(&env);
+    token_admin_client.mint(&contributor, &1_000);
+    client.contribute(&contributor, &1_000, &token_id, &None);
+
+    // Set up streaming: starts at deadline, ends 1000s later
+    client.set_stream_config(&2_000u64, &3_000u64);
+
+    // Advance past deadline but only halfway through stream (500s of 1000s elapsed)
+    env.ledger().set_timestamp(2_500u64);
+
+    let token_client = token::Client::new(&env, &token_id);
+    let balance_before = token_client.balance(&creator);
+    client.claim_stream();
+    let balance_after = token_client.balance(&creator);
+
+    // Should have received ~500 (50% of 1000)
+    let received = balance_after - balance_before;
+    assert_eq!(received, 500);
+}
+
+#[test]
+fn stream_claim_full_after_end() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let deadline = 1_000u64;
+    let goal = 1_000i128;
+
+    let (creator, token_id, client, token_admin_client) =
+        setup_contract(&env, deadline, goal, 100);
+
+    let contributor = Address::generate(&env);
+    token_admin_client.mint(&contributor, &1_000);
+    client.contribute(&contributor, &1_000, &token_id, &None);
+
+    client.set_stream_config(&2_000u64, &3_000u64);
+
+    // Advance past end of stream
+    env.ledger().set_timestamp(4_000u64);
+
+    let token_client = token::Client::new(&env, &token_id);
+    let balance_before = token_client.balance(&creator);
+    client.claim_stream();
+    let balance_after = token_client.balance(&creator);
+
+    assert_eq!(balance_after - balance_before, 1_000);
+}
+
+#[test]
+fn stream_claim_before_start_is_rejected() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let deadline = 1_000u64;
+    let goal = 1_000i128;
+
+    let (_creator, token_id, client, token_admin_client) =
+        setup_contract(&env, deadline, goal, 100);
+
+    let contributor = Address::generate(&env);
+    token_admin_client.mint(&contributor, &1_000);
+    client.contribute(&contributor, &1_000, &token_id, &None);
+
+    client.set_stream_config(&2_000u64, &3_000u64);
+
+    // Deadline passed but stream hasn't started yet
+    env.ledger().set_timestamp(1_500u64);
+
+    let r = client.try_claim_stream();
+    assert_eq!(r.err(), Some(Ok(ContractError::StreamNotYetClaimable)));
+}
+
+#[test]
+fn claim_stream_without_config_is_rejected() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (_creator, _token_id, client, _) = setup_contract(&env, 1_000, 1_000, 100);
+
+    env.ledger().set_timestamp(2_000u64);
+    let r = client.try_claim_stream();
+    assert_eq!(r.err(), Some(Ok(ContractError::StreamNotConfigured)));
+}

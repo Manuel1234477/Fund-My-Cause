@@ -12,7 +12,11 @@ const config: Config = {
     "^@/context/ThemeContext$": "<rootDir>/src/__mocks__/context/ThemeContext.ts",
     "^@/(.*)$": "<rootDir>/src/$1",
   },
-  setupFilesAfterEnv: ["@testing-library/jest-dom"],
+  setupFiles: ["<rootDir>/jest.polyfills.ts"],
+  setupFilesAfterEnv: ["<rootDir>/jest.setup.ts"],
+  transformIgnorePatterns: [
+    "node_modules/(?!(@walletconnect|uint8arrays)/)"
+  ],
 };
 
 export default config;
