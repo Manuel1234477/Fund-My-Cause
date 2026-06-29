@@ -39,7 +39,11 @@ pub struct CampaignStats {
     pub gross_raised: i128,
     /// Campaign funding goal in stroops
     pub goal: i128,
-    /// Progress as basis points (0-10000, where 10000 = 100%)
+    /// Soft cap — minimum viable funding target (0 = not set, uses goal)
+    pub soft_cap: i128,
+    /// Stretch goal — over-funding target tracked separately (0 = not set)
+    pub stretch_goal: i128,
+    /// Progress as basis points (0-10000, where 10000 = 100%) relative to soft_cap (or goal if soft_cap=0)
     pub progress_bps: u32,
     /// Number of unique contributors
     pub contributor_count: u32,
@@ -1589,4 +1593,69 @@ pub struct EventStreamClaimed {
     pub amount: i128,
     pub remaining: i128,
     pub schema_version: u32,
+}
+
+// ── Issue #694: Soft-cap / stretch-goal ──────────────────────────────────────
+
+/// Emitted when soft-cap or stretch-goal is configured.
+///
+/// Event topic: `("campaign", "caps_configured")`
+#[derive(Clone)]
+#[contracttype]
+pub struct EventCapsConfigured {
+    /// Soft cap amount in stroops (0 = not set)
+    pub soft_cap: i128,
+    /// Stretch goal amount in stroops (0 = not set)
+    pub stretch_goal: i128,
+}
+
+// ── Issue #696: Pause timelock ───────────────────────────────────────────────
+
+/// Emitted when the campaign is paused with a timelock.
+///
+/// Event topic: `("campaign", "paused_with_timelock")`
+#[derive(Clone)]
+#[contracttype]
+pub struct EventPausedWithTimelock {
+    pub timestamp: u64,
+    /// Earliest time the campaign can be unpaused
+    pub unpause_after: u64,
+}
+
+// ── Issue #697: Allow/deny list ──────────────────────────────────────────────
+
+/// Emitted when an address is added to the allow list.
+///
+/// Event topic: `("campaign", "allowlisted")`
+#[derive(Clone)]
+#[contracttype]
+pub struct EventAllowlisted {
+    pub address: Address,
+}
+
+/// Emitted when an address is removed from the allow list.
+///
+/// Event topic: `("campaign", "allowlist_removed")`
+#[derive(Clone)]
+#[contracttype]
+pub struct EventAllowlistRemoved {
+    pub address: Address,
+}
+
+/// Emitted when an address is added to the deny list.
+///
+/// Event topic: `("campaign", "denylisted")`
+#[derive(Clone)]
+#[contracttype]
+pub struct EventDenylisted {
+    pub address: Address,
+}
+
+/// Emitted when an address is removed from the deny list.
+///
+/// Event topic: `("campaign", "denylist_removed")`
+#[derive(Clone)]
+#[contracttype]
+pub struct EventDenylistRemoved {
+    pub address: Address,
 }

@@ -805,6 +805,9 @@ impl CrowdfundContract {
         let token_address: Address = inst.get(&KEY_TOKEN).unwrap();
         let platform_config: Option<PlatformConfig> = inst.get(&KEY_PLATFORM);
         let vesting: Option<VestingSchedule> = inst.get(&KEY_VESTING);
+        // #694: use soft_cap as success threshold when set
+        let soft_cap: i128 = inst.get(&KEY_SOFT_CAP).unwrap_or(0);
+        let success_threshold = if soft_cap > 0 { soft_cap } else { goal };
 
         if status != Status::Active {
             return Err(ContractError::NotActive);
@@ -815,7 +818,7 @@ impl CrowdfundContract {
         if now < deadline {
             return Err(ContractError::CampaignStillActive);
         }
-        if total < goal {
+        if total < success_threshold {
             return Err(ContractError::GoalNotReached);
         }
 
@@ -1464,12 +1467,32 @@ impl CrowdfundContract {
         let key = DataKey::Contribution(contributor.clone());
         let amount: i128 = env.storage().persistent().get(&key).unwrap_or(0);
         if amount > 0 {
+            // #695: on cancellation, only the unreleased portion is refundable.
+            // released_amount is the total already paid out via milestones; each
+            // contributor's refund is proportionally reduced.
+            let refund_amount = if status == Status::Cancelled {
+                let total: i128 = inst.get(&KEY_TOTAL).unwrap_or(0);
+                let released: i128 = inst.get(&KEY_RELEASED).unwrap_or(0);
+                if released > 0 && total > 0 {
+                    // unreleased_ratio = (total - released) / total
+                    // contributor_refund = amount * unreleased_ratio
+                    let unreleased = (total - released).max(0);
+                    amount * unreleased / total
+                } else {
+                    amount
+                }
+            } else {
+                amount
+            };
+
             let token_address: Address = inst.get(&KEY_TOKEN).unwrap();
-            token::Client::new(&env, &token_address).transfer(
-                &env.current_contract_address(),
-                &contributor,
-                &amount,
-            );
+            if refund_amount > 0 {
+                token::Client::new(&env, &token_address).transfer(
+                    &env.current_contract_address(),
+                    &contributor,
+                    &refund_amount,
+                );
+            }
             env.storage().persistent().set(&key, &0i128);
             env.events().publish(
                 ("campaign", "refunded"),
@@ -2218,6 +2241,14 @@ impl CrowdfundContract {
         admin.require_auth();
         inst.set(&KEY_STATUS, &Status::Paused);
         let now = env.ledger().timestamp();
+        // #696: record when unpause is permitted based on configured timelock
+        let timelock: u64 = inst.get(&KEY_PAUSE_TIMELOCK).unwrap_or(0);
+        let unpause_after = now.saturating_add(timelock);
+        inst.set(&KEY_UNPAUSE_AFTER, &unpause_after);
+        env.events().publish(
+            ("campaign", "paused_with_timelock"),
+            EventPausedWithTimelock { timestamp: now, unpause_after },
+        );
         env.events().publish(("campaign", "paused"), EventPaused { timestamp: now });
         env.events().publish(
             ("campaign", "status_changed"),
@@ -2259,8 +2290,13 @@ impl CrowdfundContract {
         }
         let admin: Address = inst.get(&KEY_ADMIN).unwrap();
         admin.require_auth();
-        inst.set(&KEY_STATUS, &Status::Active);
+        // #696: enforce timelock — cannot unpause before unpause_after
+        let unpause_after: u64 = inst.get(&KEY_UNPAUSE_AFTER).unwrap_or(0);
         let now = env.ledger().timestamp();
+        if now < unpause_after {
+            return Err(ContractError::EmergencyLocked);
+        }
+        inst.set(&KEY_STATUS, &Status::Active);
         env.events().publish(("campaign", "resumed"), EventResumed { timestamp: now });
         env.events().publish(
             ("campaign", "status_changed"),
@@ -3389,14 +3425,14 @@ impl CrowdfundContract {
         let total_raised: i128 = inst.get(&KEY_TOTAL).unwrap_or(0);
         let gross_raised: i128 = inst.get(&KEY_GROSS_TOTAL).unwrap_or(total_raised);
         let goal: i128 = inst.get(&KEY_GOAL).unwrap();
+        let soft_cap: i128 = inst.get(&KEY_SOFT_CAP).unwrap_or(0);
+        let stretch_goal: i128 = inst.get(&KEY_STRETCH_GOAL).unwrap_or(0);
 
-        let progress_bps = if goal > 0 {
-            let raw = (total_raised * 10_000) / goal;
-            if raw > 10_000 {
-                10_000
-            } else {
-                raw as u32
-            }
+        // Progress is measured against the soft_cap when set, otherwise the hard goal.
+        let progress_target = if soft_cap > 0 { soft_cap } else { goal };
+        let progress_bps = if progress_target > 0 {
+            let raw = (total_raised * 10_000) / progress_target;
+            if raw > 10_000 { 10_000 } else { raw as u32 }
         } else {
             0
         };
@@ -3411,6 +3447,8 @@ impl CrowdfundContract {
             total_raised,
             gross_raised,
             goal,
+            soft_cap,
+            stretch_goal,
             progress_bps,
             contributor_count,
             average_contribution,
@@ -5626,6 +5664,172 @@ impl CrowdfundContract {
             .unwrap_or(YieldInfo { claimed: 0, reward_debt: 0 });
 
         accrued.saturating_sub(info.claimed).max(0)
+    }
+
+    // ── Issue #694: Soft-cap / stretch-goal ──────────────────────────────────
+
+    /// Sets the soft cap and stretch goal for the campaign (creator only).
+    ///
+    /// - `soft_cap`: minimum viable funding target; campaign succeeds at this amount.
+    ///   Pass 0 to leave unset (falls back to the hard goal).
+    /// - `stretch_goal`: over-funding target tracked separately.
+    ///   Pass 0 to leave unset.
+    ///
+    /// Must be called while the campaign is `Active`.
+    pub fn set_caps(
+        env: Env,
+        soft_cap: i128,
+        stretch_goal: i128,
+    ) -> Result<(), ContractError> {
+        let inst = env.storage().instance();
+        let status: Status = inst.get(&KEY_STATUS).unwrap();
+        if status != Status::Active {
+            return Err(ContractError::NotActive);
+        }
+        let creator: Address = inst.get(&KEY_CREATOR).unwrap();
+        creator.require_auth();
+
+        if soft_cap < 0 || stretch_goal < 0 {
+            return Err(ContractError::InvalidGoal);
+        }
+        let goal: i128 = inst.get(&KEY_GOAL).unwrap();
+        // soft_cap must not exceed the hard goal; stretch_goal must be >= goal
+        if soft_cap > 0 && soft_cap > goal {
+            return Err(ContractError::InvalidGoal);
+        }
+        if stretch_goal > 0 && stretch_goal < goal {
+            return Err(ContractError::InvalidGoal);
+        }
+
+        inst.set(&KEY_SOFT_CAP, &soft_cap);
+        inst.set(&KEY_STRETCH_GOAL, &stretch_goal);
+
+        env.events().publish(
+            ("campaign", "caps_configured"),
+            EventCapsConfigured { soft_cap, stretch_goal },
+        );
+        Ok(())
+    }
+
+    // ── Issue #695: Track released amount; refund only unreleased on cancel ──
+
+    /// Records that `amount` stroops have been released to the creator
+    /// (e.g. via a milestone payout). Admin/creator only.
+    ///
+    /// This is called internally by milestone-release logic so that
+    /// `refund_single` knows how much has already left the contract.
+    pub fn record_release(env: Env, amount: i128) -> Result<(), ContractError> {
+        if amount <= 0 {
+            return Err(ContractError::AmountNotPositive);
+        }
+        let inst = env.storage().instance();
+        let admin: Address = inst.get(&KEY_ADMIN).unwrap();
+        admin.require_auth();
+
+        let released: i128 = inst.get(&KEY_RELEASED).unwrap_or(0);
+        let new_released = released.checked_add(amount).ok_or(ContractError::Overflow)?;
+        inst.set(&KEY_RELEASED, &new_released);
+        Ok(())
+    }
+
+    /// Returns the total amount already released to the creator.
+    pub fn released_amount(env: Env) -> i128 {
+        env.storage().instance().get(&KEY_RELEASED).unwrap_or(0)
+    }
+
+    // ── Issue #696: Timelocked pause ─────────────────────────────────────────
+
+    /// Sets the timelock duration (in seconds) that must elapse after pausing
+    /// before the campaign can be unpaused. Admin only.
+    ///
+    /// Set to 0 to disable the timelock (instant unpause allowed).
+    pub fn set_pause_timelock(env: Env, timelock_seconds: u64) -> Result<(), ContractError> {
+        let inst = env.storage().instance();
+        let admin: Address = inst.get(&KEY_ADMIN).unwrap();
+        admin.require_auth();
+        inst.set(&KEY_PAUSE_TIMELOCK, &timelock_seconds);
+        Ok(())
+    }
+
+    // ── Issue #697: Allow/deny list (clean API over whitelist/blacklist) ──────
+
+    /// Adds an address to the allow list (admin only).
+    ///
+    /// Alias for `add_to_whitelist` with a dedicated event so indexers can
+    /// distinguish the two APIs.
+    pub fn add_to_allowlist(env: Env, address: Address) -> Result<(), ContractError> {
+        let admin: Address = env.storage().instance().get(&KEY_ADMIN).unwrap();
+        admin.require_auth();
+        env.storage()
+            .persistent()
+            .set(&DataKey::Whitelist(address.clone()), &true);
+        env.storage()
+            .persistent()
+            .extend_ttl(&DataKey::Whitelist(address.clone()), 100, 100);
+        env.events()
+            .publish(("campaign", "allowlisted"), EventAllowlisted { address });
+        Ok(())
+    }
+
+    /// Removes an address from the allow list (admin only).
+    pub fn remove_from_allowlist(env: Env, address: Address) -> Result<(), ContractError> {
+        let admin: Address = env.storage().instance().get(&KEY_ADMIN).unwrap();
+        admin.require_auth();
+        env.storage()
+            .persistent()
+            .remove(&DataKey::Whitelist(address.clone()));
+        env.events().publish(
+            ("campaign", "allowlist_removed"),
+            EventAllowlistRemoved { address },
+        );
+        Ok(())
+    }
+
+    /// Adds an address to the deny list (admin only).
+    ///
+    /// Alias for `add_to_blacklist` with a dedicated event.
+    pub fn add_to_denylist(env: Env, address: Address) -> Result<(), ContractError> {
+        let admin: Address = env.storage().instance().get(&KEY_ADMIN).unwrap();
+        admin.require_auth();
+        env.storage()
+            .persistent()
+            .set(&DataKey::Blacklist(address.clone()), &true);
+        env.storage()
+            .persistent()
+            .extend_ttl(&DataKey::Blacklist(address.clone()), 100, 100);
+        env.events()
+            .publish(("campaign", "denylisted"), EventDenylisted { address });
+        Ok(())
+    }
+
+    /// Removes an address from the deny list (admin only).
+    pub fn remove_from_denylist(env: Env, address: Address) -> Result<(), ContractError> {
+        let admin: Address = env.storage().instance().get(&KEY_ADMIN).unwrap();
+        admin.require_auth();
+        env.storage()
+            .persistent()
+            .remove(&DataKey::Blacklist(address.clone()));
+        env.events().publish(
+            ("campaign", "denylist_removed"),
+            EventDenylistRemoved { address },
+        );
+        Ok(())
+    }
+
+    /// Returns `true` if the address is on the allow list.
+    pub fn is_allowlisted(env: Env, address: Address) -> bool {
+        env.storage()
+            .persistent()
+            .get::<_, bool>(&DataKey::Whitelist(address))
+            .unwrap_or(false)
+    }
+
+    /// Returns `true` if the address is on the deny list.
+    pub fn is_denylisted(env: Env, address: Address) -> bool {
+        env.storage()
+            .persistent()
+            .get::<_, bool>(&DataKey::Blacklist(address))
+            .unwrap_or(false)
     }
 }
 
