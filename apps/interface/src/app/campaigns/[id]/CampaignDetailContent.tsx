@@ -9,7 +9,7 @@ import { CountdownTimer } from "@/components/ui/CountdownTimer";
 import { ShareButton } from "@/components/ui/ShareButton";
 import { ContributionLeaderboard } from "@/components/ui/ContributionLeaderboard";
 import { EmbedCodeGenerator } from "@/components/ui/EmbedCodeGenerator";
-import { useCampaign } from "@/hooks/useCampaign";
+import { useCampaign, type CampaignInitialData } from "@/hooks/useCampaign";
 import { useWallet } from "@/context/WalletContext";
 import { CampaignActions } from "./CampaignActions";
 import { formatXLM, formatAddress } from "@/lib/format";
@@ -26,6 +26,7 @@ import { GoalSuccessBadge } from "@/components/ui/GoalSuccessBadge";
 import { ShareModal } from "@/components/ui/ShareModal";
 import { PausedBanner } from "@/components/ui/PausedBanner";
 import { UpdateFeed } from "@/components/ui/UpdateFeed";
+import { DEFAULT_HERO_IMAGE } from "@/lib/constants";
 
 function ContractIdRow({ contractId }: { contractId: string }) {
   const [copied, setCopied] = useState(false);
@@ -107,7 +108,19 @@ function buildActivities(
   return items.sort((a, b) => b.timestamp - a.timestamp);
 }
 
-export function CampaignDetailContent({ contractId }: { contractId: string }) {
+export function CampaignDetailContent({
+  contractId,
+  initialData,
+}: {
+  contractId: string;
+  /**
+   * SSR-preloaded campaign data from the server component.
+   * Seeds the React Query cache so the first render is instant and produces
+   * meaningful HTML without JavaScript — satisfying both LCP and SEO goals.
+   * React Query will revalidate in the background after staleTime (30 s).
+   */
+  initialData?: CampaignInitialData;
+}) {
   const {
     info,
     stats,
@@ -116,7 +129,7 @@ export function CampaignDetailContent({ contractId }: { contractId: string }) {
     refresh,
     applyOptimisticContribution,
     rollbackOptimistic,
-  } = useCampaign(contractId);
+  } = useCampaign(contractId, initialData);
   const { address } = useWallet();
 
   const [showSuccessModal, setShowSuccessModal] = useState(false);
@@ -201,12 +214,13 @@ export function CampaignDetailContent({ contractId }: { contractId: string }) {
 
       <div className="w-full h-72 overflow-hidden md:h-96 relative">
         <Image
-          src="https://images.unsplash.com/photo-1542601906990-b4d3fb778b09?auto=format&fit=crop&q=80&w=1600"
+          src={DEFAULT_HERO_IMAGE}
           alt={info.title}
           fill
           className="object-cover"
           priority
           sizes="100vw"
+          quality={85}
         />
       </div>
 

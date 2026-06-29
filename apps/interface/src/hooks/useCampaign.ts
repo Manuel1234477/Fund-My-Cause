@@ -3,7 +3,22 @@ import { useState, useCallback } from "react";
 import { fetchCampaignView, type CampaignInfo, type CampaignStats } from "@/lib/soroban";
 import { isValidContractId } from "@/lib/validation";
 
-export function useCampaign(contractId: string) {
+export interface CampaignInitialData {
+  info: CampaignInfo;
+  stats: CampaignStats;
+}
+
+/**
+ * useCampaign — fetches and caches campaign info + stats.
+ *
+ * @param contractId - The Soroban contract ID for this campaign
+ * @param initialData - Optional SSR-preloaded data. When provided, React Query
+ *   uses it as the initial cache value so the component renders with data
+ *   on the first paint (no loading state), then re-fetches in the background
+ *   for live updates. This is the key mechanism that makes ISR pages render
+ *   meaningful HTML without JS while still refreshing automatically.
+ */
+export function useCampaign(contractId: string, initialData?: CampaignInitialData) {
   const queryClient = useQueryClient();
   const [optimisticDelta, setOptimisticDelta] = useState<{
     raisedDelta: bigint;
@@ -18,6 +33,13 @@ export function useCampaign(contractId: string) {
     queryFn: () => fetchCampaignView(contractId),
     enabled: isValidContractId(contractId),
     retry: false,
+    // SSR-preloaded data seeds the cache so the first render is instant and
+    // the component never enters the loading skeleton state on page load.
+    initialData: initialData ?? undefined,
+    // Treat SSR data as fresh for 30 s — within that window no background
+    // refetch is triggered, matching the ISR revalidation window.
+    initialDataUpdatedAt: initialData ? Date.now() : undefined,
+    staleTime: 30_000,
   });
 
   const error =

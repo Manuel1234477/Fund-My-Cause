@@ -1,0 +1,236 @@
+name: SBOM Generation and Artifact Signing
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - 'v*'
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: write       # upload release assets
+  packages: write       # push container images
+  id-token: write       # keyless cosign signing via OIDC
+  security-events: write # upload SARIF / dependency-submission
+
+jobs:
+  sbom-frontend:
+    name: Generate Frontend SBOM
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: apps/interface/package-lock.json
+
+      - name: Install frontend dependencies
+        run: npm ci --prefix apps/interface
+
+      - name: Generate frontend SBOM (CycloneDX)
+        run: |
+          npm install -g @cyclonedx/cyclonedx-npm@^1
+          cd apps/interface
+          cyclonedx-npm --output-format JSON --output-file ../../sbom-frontend.cdx.json
+          echo "✅ Frontend SBOM generated"
+
+      - name: Upload frontend SBOM
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom-frontend
+          path: sbom-frontend.cdx.json
+          retention-days: 90
+
+      - name: Attach SBOM to release
+        if: github.event_name == 'release'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: sbom-frontend.cdx.json
+
+  sbom-contracts:
+    name: Generate Contracts SBOM
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-sbom-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-sbom-
+
+      - name: Install cargo-cyclonedx
+        run: cargo install cargo-cyclonedx --locked
+
+      - name: Generate contracts SBOM (CycloneDX)
+        run: |
+          cargo cyclonedx --format json --output-file sbom-contracts.cdx.json
+          echo "✅ Contracts SBOM generated"
+
+      - name: Upload contracts SBOM
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom-contracts
+          path: sbom-contracts.cdx.json
+          retention-days: 90
+
+      - name: Attach SBOM to release
+        if: github.event_name == 'release'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: sbom-contracts.cdx.json
+
+  sign-image:
+    name: Build, Sign, and Verify Container Image
+    runs-on: ubuntu-latest
+    # Only sign when pushing to main or on releases
+    if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/')
+
+    outputs:
+      image_digest: ${{ steps.build.outputs.digest }}
+      image_ref: ${{ steps.tag.outputs.image_ref }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Compute image tag
+        id: tag
+        run: |
+          REPO="ghcr.io/${{ github.repository_owner }}/fund-my-cause-frontend"
+          REPO=$(echo "${REPO}" | tr '[:upper:]' '[:lower:]')
+          SHA="${{ github.sha }}"
+          SHORT_SHA="${SHA:0:7}"
+          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            VERSION="${GITHUB_REF#refs/tags/}"
+            echo "image_ref=${REPO}:${VERSION}" >> "$GITHUB_OUTPUT"
+          else
+            echo "image_ref=${REPO}:${SHORT_SHA}" >> "$GITHUB_OUTPUT"
+          fi
+          echo "repo=${REPO}" >> "$GITHUB_OUTPUT"
+          echo "short_sha=${SHORT_SHA}" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push image
+        id: build
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: apps/interface/Dockerfile
+          push: true
+          tags: ${{ steps.tag.outputs.image_ref }}
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3.4.0
+
+      - name: Sign image with cosign (keyless via GitHub OIDC)
+        run: |
+          IMAGE_REF="${{ steps.tag.outputs.image_ref }}@${{ steps.build.outputs.digest }}"
+          cosign sign --yes "${IMAGE_REF}"
+          echo "✅ Image signed: ${IMAGE_REF}"
+
+      - name: Verify image signature
+        run: |
+          IMAGE_REF="${{ steps.tag.outputs.image_ref }}@${{ steps.build.outputs.digest }}"
+          cosign verify \
+            --certificate-identity-regexp "https://github.com/${{ github.repository }}/" \
+            --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+            "${IMAGE_REF}"
+          echo "✅ Signature verified"
+
+      - name: Generate container SBOM with Syft
+        uses: anchore/sbom-action@v0.15.9
+        with:
+          image: ${{ steps.tag.outputs.image_ref }}@${{ steps.build.outputs.digest }}
+          artifact-name: sbom-container.spdx.json
+          output-file: sbom-container.spdx.json
+          format: spdx-json
+
+      - name: Attach container SBOM to image (cosign attest)
+        run: |
+          IMAGE_REF="${{ steps.tag.outputs.image_ref }}@${{ steps.build.outputs.digest }}"
+          cosign attest --yes \
+            --predicate sbom-container.spdx.json \
+            --type spdxjson \
+            "${IMAGE_REF}"
+          echo "✅ SBOM attested to image"
+
+      - name: Upload container SBOM artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom-container
+          path: sbom-container.spdx.json
+          retention-days: 90
+
+      - name: Attach container SBOM to release
+        if: github.event_name == 'release'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: sbom-container.spdx.json
+
+  verify-deploy:
+    name: Verify Signature Before Deploy
+    needs: sign-image
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/')
+
+    steps:
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3.4.0
+
+      - name: Reject unsigned image
+        run: |
+          IMAGE_REF="${{ needs.sign-image.outputs.image_ref }}@${{ needs.sign-image.outputs.image_digest }}"
+          echo "Verifying signature for ${IMAGE_REF} before deploy..."
+          if ! cosign verify \
+            --certificate-identity-regexp "https://github.com/${{ github.repository }}/" \
+            --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+            "${IMAGE_REF}"; then
+            echo "❌ Image signature verification failed — deploy rejected"
+            exit 1
+          fi
+          echo "✅ Signature verified — deploy approved"
+
+      - name: Deployment gate passed
+        run: |
+          echo "🚀 Image ${IMAGE_REF} is signed and verified. Proceeding with deployment."
+          echo "## Supply-Chain Gate" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Check | Result |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|---|---|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Image signed with cosign | ✅ |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Signature verified via OIDC | ✅ |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| SBOM attested to image | ✅ |" >> "$GITHUB_STEP_SUMMARY"
+        env:
+          IMAGE_REF: ${{ needs.sign-image.outputs.image_ref }}

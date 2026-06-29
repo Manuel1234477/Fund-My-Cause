@@ -6,7 +6,7 @@ import { Navbar } from "@/components/layout/Navbar";
 import { ProgressBar } from "@/components/ui/ProgressBar";
 import { CountdownTimer } from "@/components/ui/CountdownTimer";
 import { ShareTrigger } from "./ShareTrigger";
-import { fetchCampaign, getStaticCampaignIds } from "@/lib/soroban";
+import { fetchCampaign, fetchCampaignView, getStaticCampaignIds } from "@/lib/soroban";
 import { ShareButton } from "@/components/ui/ShareButton";
 import { TransactionHistory } from "@/components/ui/TransactionHistory";
 import { XlmAmount } from "@/components/ui/XlmAmount";
@@ -16,6 +16,7 @@ import {
   DEFAULT_HERO_IMAGE,
   CAMPAIGN_PAGE_REVALIDATE_SECONDS,
 } from "@/lib/constants";
+import { getOptimizedImageUrl } from "@/lib/imageOptimization";
 import { CampaignActions } from "./CampaignActions";
 import { CampaignDetailContent } from "./CampaignDetailContent";
 import { Breadcrumb } from "@/components/ui/Breadcrumb";
@@ -59,7 +60,7 @@ export async function generateMetadata({
         url,
         siteName: "Fund-My-Cause",
         images: [
-          { url: DEFAULT_HERO_IMAGE, width: 1200, height: 630, alt: c.title },
+          { url: getOptimizedImageUrl(DEFAULT_HERO_IMAGE, { width: 1200, quality: 85, format: "auto" }), width: 1200, height: 630, alt: c.title },
         ],
         type: "website",
       },
@@ -85,8 +86,15 @@ export default async function CampaignDetailPage({
   const { id } = await params;
 
   let campaign;
+  let campaignView;
   try {
-    campaign = await fetchCampaign(id);
+    // Fetch both the flat CampaignData (used by the outer page shell) and the
+    // raw { info, stats } view (used to seed the CampaignDetailContent cache).
+    // These resolve in parallel with the XLM price request.
+    [campaign, campaignView] = await Promise.all([
+      fetchCampaign(id),
+      fetchCampaignView(id),
+    ]);
   } catch {
     notFound();
   }
@@ -107,12 +115,13 @@ export default async function CampaignDetailPage({
       {/* Hero image */}
       <div className="w-full h-72 md:h-96 overflow-hidden relative">
         <Image
-          src={DEFAULT_HERO_IMAGE.replace("w=1200", "w=1600")}
+          src={DEFAULT_HERO_IMAGE}
           alt={campaign.title}
           fill
           className="object-cover"
           priority
           sizes="100vw"
+          quality={85}
         />
       </div>
 
@@ -213,7 +222,16 @@ export default async function CampaignDetailPage({
           status={campaign.status}
         />
       </div>
-      <CampaignDetailContent contractId={id} />
+      {/*
+       * CampaignDetailContent receives SSR-preloaded info+stats as initialData.
+       * This seeds the React Query cache so the component renders with real data
+       * on first paint — no loading spinner, no empty shell — satisfying ISR/SSR
+       * requirements. React Query revalidates in the background after 30 s.
+       */}
+      <CampaignDetailContent
+        contractId={id}
+        initialData={campaignView}
+      />
     </main>
     </BreadcrumbProvider>
   );

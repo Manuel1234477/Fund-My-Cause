@@ -1,12 +1,13 @@
 "use client";
 
-import React, { useEffect, useRef, useState } from "react";
+import React, { useRef, useState } from "react";
 import { Loader2, PlusCircle, Trash2, X } from "lucide-react";
 import type { ProfileData } from "@/types/profile";
 import { writeProfile } from "@/lib/profileStore";
 import { validateBio, validateSocialLinks, MAX_BIO_LENGTH, MAX_SOCIAL_LINKS } from "@/lib/profileValidation";
 import { uploadToPinata } from "@/lib/pinata";
 import { validateImageFile } from "@/lib/imageValidation";
+import { useFocusTrap } from "@/hooks/useFocusTrap";
 
 interface EditProfileModalProps {
   address: string;
@@ -34,13 +35,7 @@ export function EditProfileModal({
   const [bioError, setBioError] = useState<string | null>(null);
   const [linksError, setLinksError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-
-  // Escape key handler
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [onClose]);
+  const dialogRef = useFocusTrap(true, { onEscape: onClose }) as React.RefObject<HTMLDivElement>;
 
   const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -119,6 +114,7 @@ export function EditProfileModal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
       <div
+        ref={dialogRef}
         role="dialog"
         aria-modal="true"
         aria-labelledby="edit-profile-title"

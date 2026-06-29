@@ -68,6 +68,46 @@ route:
       repeat_interval: 2h
       continue: true
 
+    # Log-based error-spike alerts - PagerDuty + Slack
+    - match:
+        category: error_spike
+      receiver: 'pagerduty-critical'
+      group_wait: 0s
+      repeat_interval: 10m
+      continue: true
+
+    # Log-based failed-transaction alerts - PagerDuty + Slack
+    - match:
+        category: failed_transaction
+      receiver: 'slack-defi-transactions'
+      group_wait: 1m
+      repeat_interval: 15m
+      continue: true
+
+    # Log-based RPC failure alerts - PagerDuty + Slack
+    - match:
+        category: rpc_failure
+      receiver: 'pagerduty-defi'
+      group_wait: 30s
+      repeat_interval: 10m
+      continue: true
+
+    # Log-based availability alerts - PagerDuty + Slack
+    - match:
+        category: availability
+      receiver: 'pagerduty-critical'
+      group_wait: 0s
+      repeat_interval: 5m
+      continue: true
+
+    # Log-based security alerts - Slack security channel
+    - match:
+        category: security
+      receiver: 'slack-security'
+      group_wait: 1m
+      repeat_interval: 30m
+      continue: true
+
 # Inhibition rules
 inhibit_rules:
   # Don't send warning if critical is already firing
@@ -200,3 +240,31 @@ receivers:
           {{ end }}
         send_resolved: true
         color: '#9C27B0'
+
+  # Log-based transaction alerts receiver
+  - name: 'slack-defi-transactions'
+    slack_configs:
+      - channel: '#defi-alerts'
+        title: '🔗 Transaction Alert: {{ .GroupLabels.alertname }}'
+        text: |
+          {{ range .Alerts.Firing }}
+          *{{ .Labels.alertname }}* ({{ .Labels.severity }})
+          {{ .Annotations.description }}
+          <{{ .Annotations.runbook_url }}|Runbook>
+          {{ end }}
+        send_resolved: true
+        color: 'danger'
+
+  # Log-based security alerts receiver
+  - name: 'slack-security'
+    slack_configs:
+      - channel: '#security-alerts'
+        title: '🔒 Security Alert: {{ .GroupLabels.alertname }}'
+        text: |
+          {{ range .Alerts.Firing }}
+          *{{ .Labels.alertname }}* ({{ .Labels.severity }})
+          {{ .Annotations.description }}
+          <{{ .Annotations.runbook_url }}|Runbook>
+          {{ end }}
+        send_resolved: true
+        color: 'warning'

@@ -4,6 +4,7 @@ import React from "react";
 import { X, Trophy, Share2, Wallet, ArrowRight } from "lucide-react";
 import { useTranslations, useLocale } from "next-intl";
 import { localeToIntlCode } from "@/lib/format";
+import { useFocusTrap } from "@/hooks/useFocusTrap";
 
 interface GoalSuccessModalProps {
   campaignTitle: string;
@@ -25,13 +26,19 @@ export function GoalSuccessModal({
 }: GoalSuccessModalProps) {
   const t = useTranslations("goalSuccess");
   const locale = useLocale();
+  const dialogRef = useFocusTrap(true, { onEscape: onClose }) as React.RefObject<HTMLDivElement>;
 
   return (
     <div
       className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 px-4"
       onClick={(e) => e.target === e.currentTarget && onClose()}
     >
-      <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl p-6 w-full max-w-sm shadow-2xl space-y-5">
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="goal-success-title"
+        className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl p-6 w-full max-w-sm shadow-2xl space-y-5">
         {/* Header */}
         <div className="flex items-start justify-between">
           <div className="flex items-center gap-3">
@@ -39,7 +46,7 @@ export function GoalSuccessModal({
               <Trophy size={20} className="text-green-600 dark:text-green-400" />
             </div>
             <div>
-              <h2 className="font-bold text-gray-900 dark:text-white">{t("title")}</h2>
+              <h2 id="goal-success-title" className="font-bold text-gray-900 dark:text-white">{t("title")}</h2>
               <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 line-clamp-1">{campaignTitle}</p>
             </div>
           </div>

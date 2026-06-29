@@ -84,12 +84,13 @@ function RefundCard({
           {campaign.title}
         </h2>
         <span
-          className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${
+          className={`inline-flex items-center gap-1 shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${
             campaign.status === "Refunded"
               ? "bg-yellow-900 text-yellow-300"
               : "bg-red-900 text-red-300"
           }`}
         >
+          <span aria-hidden="true">{campaign.status === "Refunded" ? "↩" : "✗"}</span>
           {campaign.status}
         </span>
       </div>

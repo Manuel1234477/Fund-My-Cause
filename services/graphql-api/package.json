@@ -9,7 +9,10 @@
     "build": "tsc",
     "start": "node dist/index.js",
     "test": "vitest --run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "test:load": "artillery run load-test.yml",
+    "test:load:report": "artillery run load-test.yml --output load-report.json && artillery report load-report.json",
+    "test:load:smoke": "artillery run load-test-smoke.yml"
   },
   "dependencies": {
     "@apollo/server": "^4.10.0",
@@ -29,6 +32,7 @@
     "jsonwebtoken": "^9.1.0"
   },
   "devDependencies": {
+    "artillery": "^2.0.0",
     "typescript": "^5.9.0",
     "ts-node": "^10.9.0",
     "@types/node": "^20.10.0",

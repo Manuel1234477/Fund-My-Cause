@@ -8,6 +8,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Seed/fixture generators for local testing and development (#731)
+  - `scripts/seed-testnet.sh` — Unix/Linux/Mac script to deploy sample campaigns to testnet covering all lifecycle states (active, funded, failed, refunding)
+  - `scripts/seed-testnet.ps1` — Windows PowerShell version of seed script with identical functionality
+  - `scripts/generate-fixtures.ts` — TypeScript fixture generator creating realistic JSON test data for E2E and component tests
+  - `fixtures/README.md` — comprehensive documentation for using fixtures and seed scripts, including campaign states, usage examples, and troubleshooting
+  - `docs/LOCAL_DEVELOPMENT_QUICKSTART.md` — quick start guide for local development with step-by-step setup instructions
+  - `npm run fixtures:generate` — command to generate test fixtures JSON
+  - `npm run seed:testnet` — command to seed testnet with sample campaigns (Unix/Linux/Mac)
+  - Automatic `.env.local` generation with deployed contract IDs
+  - `fixtures/seed-data.json` generation with deployment metadata and contract addresses
+  - Campaign templates covering 10 different states: new, mid-progress, near goal, fully funded, failed, refunding, paused, near deadline, early stage, and low progress
+  - Support for 5-50 campaigns with `--num-campaigns` option for load testing
+  - Verbose mode for detailed deployment logging
+  - Backup creation for `.env.local` before overwriting
 - `docs/api/` — structured API reference for both contracts: `crowdfund.md`,
   `registry.md`, `types.md`, `errors.md`, `events.md`, each cross-linked.
 - `docs/tutorials/` — six step-by-step guides: getting started, campaign

@@ -66,12 +66,16 @@ export const lobstrAdapter: WalletAdapter = {
     return address;
   },
 
-  async signTransaction(xdr) {
+  async signTransaction(xdr, networkPassphrase) {
     if (!_session) throw new Error("LOBSTR not connected");
     const client = await getClient();
+    // Determine chain based on network passphrase (optional, defaults to testnet)
+    const chainId = networkPassphrase?.includes("Public") 
+      ? STELLAR_CHAIN_MAINNET 
+      : STELLAR_CHAIN_TESTNET;
     const result = await client.request<{ signedXDR: string }>({
       topic: _session.topic,
-      chainId: STELLAR_CHAIN_TESTNET,
+      chainId,
       request: {
         method: "stellar_signXDR",
         params: { xdr },

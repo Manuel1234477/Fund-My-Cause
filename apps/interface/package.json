@@ -9,11 +9,13 @@
     "start": "next start",
     "lint": "eslint",
     "format": "prettier --write .",
-    "test": "jest --run",
+    "test": "jest",
     "test:coverage": "jest --coverage",
     "test:vitest": "vitest --run",
     "test:vitest:watch": "vitest",
-    "test:vitest:coverage": "vitest run --coverage"
+    "test:vitest:coverage": "vitest run --coverage",
+    "test:mutation": "stryker run",
+    "test:mutation:report": "open reports/mutation/mutation-report.html"
   },
   "dependencies": {
     "@fund-my-cause/types": "*",
@@ -41,6 +43,9 @@
   "devDependencies": {
     "@axe-core/react": "^4.8.0",
     "@eslint/eslintrc": "^2.1.4",
+    "@stryker-mutator/core": "^8.8.0",
+    "@stryker-mutator/jest-runner": "^8.8.0",
+    "@stryker-mutator/typescript-checker": "^8.8.0",
     "@tailwindcss/postcss": "4.2.2",
     "@testing-library/jest-dom": "6.9.1",
     "@testing-library/react": "16.3.2",

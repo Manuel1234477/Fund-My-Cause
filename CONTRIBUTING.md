@@ -211,6 +211,68 @@ cargo build --release --target wasm32-unknown-unknown
 cargo test --workspace -- --nocapture
 ```
 
+### Seeding Test Data (Local Development)
+
+For local development with realistic data, use the seed scripts to deploy sample campaigns to testnet:
+
+#### Prerequisites
+1. Stellar CLI installed and configured
+2. Testnet account with XLM balance
+3. Token contract ID (or use native XLM)
+
+#### Quick Start
+
+**Unix/Linux/Mac:**
+```bash
+# Set your testnet credentials
+export CREATOR="YOUR_TESTNET_ADDRESS"
+export TOKEN="TOKEN_CONTRACT_ID"
+
+# Seed testnet with sample campaigns
+./scripts/seed-testnet.sh
+
+# Or specify number of campaigns
+./scripts/seed-testnet.sh --num-campaigns 10 --verbose
+```
+
+**Windows:**
+```powershell
+# Set your testnet credentials
+$env:CREATOR = "YOUR_TESTNET_ADDRESS"
+$env:TOKEN = "TOKEN_CONTRACT_ID"
+
+# Seed testnet with sample campaigns
+.\scripts\seed-testnet.ps1
+
+# Or specify number of campaigns
+.\scripts\seed-testnet.ps1 -NumCampaigns 10 -Verbose
+```
+
+This will:
+- Deploy a registry contract (if needed)
+- Create 5-10 campaigns with varied states (active, funded, failed, refunding)
+- Update `apps/interface/.env.local` with contract IDs
+- Generate `fixtures/seed-data.json` for reference
+
+#### Generate Test Fixtures (JSON)
+
+For testing without deploying contracts, generate local fixtures:
+
+```bash
+# Generate test fixtures
+npx ts-node scripts/generate-fixtures.ts
+
+# Custom output path
+npx ts-node scripts/generate-fixtures.ts --output fixtures/custom-fixtures.json
+```
+
+Fixtures include:
+- 10 campaigns covering all lifecycle states
+- Sample contributors and contributions
+- Realistic data for E2E and component tests
+
+See [fixtures/README.md](fixtures/README.md) for detailed documentation on using fixtures and seed data.
+
 ## Project Structure
 
 ```

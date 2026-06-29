@@ -4,8 +4,9 @@ import React from "react";
 import { Download, ExternalLink, X, CheckCircle } from "lucide-react";
 import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
+import { useFocusTrap } from "@/hooks/useFocusTrap";
 
-interface ContributionReceipt {
+export interface ContributionReceipt {
   campaignTitle: string;
   amount: number;
   txHash: string;
@@ -26,6 +27,7 @@ export function ReceiptModal({
   explorerUrl = (hash) => `https://testnet.stellarexpert.com/tx/${hash}`,
 }: ReceiptModalProps) {
   const receiptRef = React.useRef<HTMLDivElement>(null);
+  const dialogRef = useFocusTrap(true, { onEscape: onClose }) as React.RefObject<HTMLDivElement>;
 
   const downloadPDF = async () => {
     if (!receiptRef.current) return;
@@ -39,7 +41,6 @@ export function ReceiptModal({
       const pdf = new jsPDF("p", "mm", "a4");
       const imgData = canvas.toDataURL("image/png");
       const imgWidth = 210;
-      const pageHeight = 297;
       const imgHeight = (canvas.height * imgWidth) / canvas.width;
 
       pdf.addImage(imgData, "PNG", 0, 0, imgWidth, imgHeight);
@@ -69,12 +70,18 @@ export function ReceiptModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-      <div className="w-full max-w-md rounded-lg bg-white p-6 shadow-lg dark:bg-gray-900">
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="receipt-modal-title"
+        className="w-full max-w-md rounded-lg bg-white p-6 shadow-lg dark:bg-gray-900"
+      >
         {/* Header */}
         <div className="mb-6 flex items-start justify-between">
           <div className="flex items-center gap-3">
             <CheckCircle className="h-8 w-8 text-green-500" />
-            <h2 className="text-xl font-bold text-gray-900 dark:text-white">
+            <h2 id="receipt-modal-title" className="text-xl font-bold text-gray-900 dark:text-white">
               Contribution Receipt
             </h2>
           </div>

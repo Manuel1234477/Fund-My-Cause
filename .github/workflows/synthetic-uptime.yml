@@ -1,0 +1,235 @@
+name: Synthetic Uptime Monitoring
+
+on:
+  schedule:
+    # Run every 5 minutes
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
+    inputs:
+      base_url:
+        description: 'Base URL to monitor'
+        required: false
+        default: ''
+
+concurrency:
+  group: synthetic-uptime
+  cancel-in-progress: false
+
+jobs:
+  uptime-checks:
+    name: Synthetic Uptime Checks
+    runs-on: ubuntu-latest
+
+    env:
+      BASE_URL: ${{ github.event.inputs.base_url || vars.UPTIME_BASE_URL || 'https://fund-my-cause.vercel.app' }}
+      # Latency budgets (milliseconds)
+      LATENCY_BUDGET_HOME: 2000
+      LATENCY_BUDGET_CAMPAIGN: 3000
+      LATENCY_BUDGET_API: 1500
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check homepage availability and latency
+        id: check_home
+        run: |
+          START=$(date +%s%3N)
+          HTTP_CODE=$(curl -sS -o /tmp/home_body.txt -w "%{http_code}" \
+            --max-time 10 \
+            --connect-timeout 5 \
+            "${BASE_URL}/")
+          END=$(date +%s%3N)
+          LATENCY=$((END - START))
+
+          echo "http_code=${HTTP_CODE}" >> $GITHUB_OUTPUT
+          echo "latency_ms=${LATENCY}" >> $GITHUB_OUTPUT
+
+          if [ "${HTTP_CODE}" != "200" ]; then
+            echo "❌ Homepage returned HTTP ${HTTP_CODE}"
+            echo "status=failed" >> $GITHUB_OUTPUT
+          elif [ "${LATENCY}" -gt "${LATENCY_BUDGET_HOME}" ]; then
+            echo "⚠️ Homepage latency ${LATENCY}ms exceeds budget ${LATENCY_BUDGET_HOME}ms"
+            echo "status=latency_exceeded" >> $GITHUB_OUTPUT
+          else
+            echo "✅ Homepage OK (${HTTP_CODE}) in ${LATENCY}ms"
+            echo "status=ok" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Check campaigns page
+        id: check_campaigns
+        run: |
+          START=$(date +%s%3N)
+          HTTP_CODE=$(curl -sS -o /tmp/campaigns_body.txt -w "%{http_code}" \
+            --max-time 10 \
+            --connect-timeout 5 \
+            "${BASE_URL}/campaigns")
+          END=$(date +%s%3N)
+          LATENCY=$((END - START))
+
+          echo "http_code=${HTTP_CODE}" >> $GITHUB_OUTPUT
+          echo "latency_ms=${LATENCY}" >> $GITHUB_OUTPUT
+
+          if [ "${HTTP_CODE}" != "200" ]; then
+            echo "❌ Campaigns page returned HTTP ${HTTP_CODE}"
+            echo "status=failed" >> $GITHUB_OUTPUT
+          elif [ "${LATENCY}" -gt "${LATENCY_BUDGET_CAMPAIGN}" ]; then
+            echo "⚠️ Campaigns page latency ${LATENCY}ms exceeds budget ${LATENCY_BUDGET_CAMPAIGN}ms"
+            echo "status=latency_exceeded" >> $GITHUB_OUTPUT
+          else
+            echo "✅ Campaigns page OK (${HTTP_CODE}) in ${LATENCY}ms"
+            echo "status=ok" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Check API health endpoint
+        id: check_api
+        run: |
+          START=$(date +%s%3N)
+          HTTP_CODE=$(curl -sS -o /tmp/api_body.txt -w "%{http_code}" \
+            --max-time 10 \
+            --connect-timeout 5 \
+            "${BASE_URL}/api/health")
+          END=$(date +%s%3N)
+          LATENCY=$((END - START))
+
+          echo "http_code=${HTTP_CODE}" >> $GITHUB_OUTPUT
+          echo "latency_ms=${LATENCY}" >> $GITHUB_OUTPUT
+
+          # API health may return 200 or 404 if not implemented; flag anything 5xx
+          if echo "${HTTP_CODE}" | grep -qE '^5'; then
+            echo "❌ API health returned HTTP ${HTTP_CODE}"
+            echo "status=failed" >> $GITHUB_OUTPUT
+          elif [ "${LATENCY}" -gt "${LATENCY_BUDGET_API}" ]; then
+            echo "⚠️ API latency ${LATENCY}ms exceeds budget ${LATENCY_BUDGET_API}ms"
+            echo "status=latency_exceeded" >> $GITHUB_OUTPUT
+          else
+            echo "✅ API endpoint OK (${HTTP_CODE}) in ${LATENCY}ms"
+            echo "status=ok" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Simulate contribution flow (read-only)
+        id: check_contribute_flow
+        run: |
+          # Simulate reading a campaign page as a user would before contributing
+          START=$(date +%s%3N)
+          HTTP_CODE=$(curl -sS -o /tmp/flow_body.txt -w "%{http_code}" \
+            --max-time 15 \
+            --connect-timeout 5 \
+            "${BASE_URL}/campaigns")
+          END=$(date +%s%3N)
+          LATENCY=$((END - START))
+
+          echo "http_code=${HTTP_CODE}" >> $GITHUB_OUTPUT
+          echo "latency_ms=${LATENCY}" >> $GITHUB_OUTPUT
+
+          # Check that the page contains expected content markers
+          if grep -qi "campaign\|fund\|contribute" /tmp/flow_body.txt 2>/dev/null; then
+            echo "✅ Contribution flow page content check passed"
+            echo "content_ok=true" >> $GITHUB_OUTPUT
+          else
+            echo "⚠️ Contribution flow page content check: unexpected content"
+            echo "content_ok=false" >> $GITHUB_OUTPUT
+          fi
+
+          if echo "${HTTP_CODE}" | grep -qE '^5'; then
+            echo "status=failed" >> $GITHUB_OUTPUT
+          else
+            echo "status=ok" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Evaluate results and build report
+        id: report
+        run: |
+          HOME_STATUS="${{ steps.check_home.outputs.status }}"
+          CAMPAIGNS_STATUS="${{ steps.check_campaigns.outputs.status }}"
+          API_STATUS="${{ steps.check_api.outputs.status }}"
+          FLOW_STATUS="${{ steps.check_contribute_flow.outputs.status }}"
+
+          FAILURES=0
+          LATENCY_VIOLATIONS=0
+
+          for STATUS in "${HOME_STATUS}" "${CAMPAIGNS_STATUS}" "${API_STATUS}" "${FLOW_STATUS}"; do
+            if [ "${STATUS}" = "failed" ]; then
+              FAILURES=$((FAILURES + 1))
+            elif [ "${STATUS}" = "latency_exceeded" ]; then
+              LATENCY_VIOLATIONS=$((LATENCY_VIOLATIONS + 1))
+            fi
+          done
+
+          echo "failures=${FAILURES}" >> $GITHUB_OUTPUT
+          echo "latency_violations=${LATENCY_VIOLATIONS}" >> $GITHUB_OUTPUT
+
+          {
+            echo "## Synthetic Uptime Report"
+            echo ""
+            echo "| Check | Status | HTTP Code | Latency (ms) | Budget (ms) |"
+            echo "|-------|--------|-----------|--------------|-------------|"
+            echo "| Homepage | ${{ steps.check_home.outputs.status }} | ${{ steps.check_home.outputs.http_code }} | ${{ steps.check_home.outputs.latency_ms }} | ${LATENCY_BUDGET_HOME} |"
+            echo "| Campaigns | ${{ steps.check_campaigns.outputs.status }} | ${{ steps.check_campaigns.outputs.http_code }} | ${{ steps.check_campaigns.outputs.latency_ms }} | ${LATENCY_BUDGET_CAMPAIGN} |"
+            echo "| API Health | ${{ steps.check_api.outputs.status }} | ${{ steps.check_api.outputs.http_code }} | ${{ steps.check_api.outputs.latency_ms }} | ${LATENCY_BUDGET_API} |"
+            echo "| Contribute Flow | ${{ steps.check_contribute_flow.outputs.status }} | ${{ steps.check_contribute_flow.outputs.http_code }} | ${{ steps.check_contribute_flow.outputs.latency_ms }} | ${LATENCY_BUDGET_CAMPAIGN} |"
+            echo ""
+            if [ "${FAILURES}" -gt 0 ]; then
+              echo "🚨 **${FAILURES} check(s) FAILED** — on-call alert triggered"
+            elif [ "${LATENCY_VIOLATIONS}" -gt 0 ]; then
+              echo "⚠️ **${LATENCY_VIOLATIONS} latency budget(s) exceeded** — warning alert triggered"
+            else
+              echo "✅ All checks passed"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Alert on failure via Slack
+        if: steps.report.outputs.failures != '0'
+        uses: slackapi/slack-github-action@v1.26.0
+        with:
+          payload: |
+            {
+              "text": "🚨 *Synthetic Uptime Alert — Fund-My-Cause*",
+              "attachments": [
+                {
+                  "color": "danger",
+                  "fields": [
+                    {"title": "Failures", "value": "${{ steps.report.outputs.failures }}", "short": true},
+                    {"title": "Run", "value": "<${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Details>", "short": true},
+                    {"title": "Homepage", "value": "${{ steps.check_home.outputs.status }} (${{ steps.check_home.outputs.latency_ms }}ms)", "short": true},
+                    {"title": "Campaigns", "value": "${{ steps.check_campaigns.outputs.status }} (${{ steps.check_campaigns.outputs.latency_ms }}ms)", "short": true},
+                    {"title": "API", "value": "${{ steps.check_api.outputs.status }} (${{ steps.check_api.outputs.latency_ms }}ms)", "short": true},
+                    {"title": "Contribute Flow", "value": "${{ steps.check_contribute_flow.outputs.status }} (${{ steps.check_contribute_flow.outputs.latency_ms }}ms)", "short": true}
+                  ]
+                }
+              ]
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          SLACK_WEBHOOK_TYPE: INCOMING_WEBHOOK
+
+      - name: Alert on latency budget exceeded
+        if: steps.report.outputs.failures == '0' && steps.report.outputs.latency_violations != '0'
+        uses: slackapi/slack-github-action@v1.26.0
+        with:
+          payload: |
+            {
+              "text": "⚠️ *Latency Budget Exceeded — Fund-My-Cause*",
+              "attachments": [
+                {
+                  "color": "warning",
+                  "fields": [
+                    {"title": "Violations", "value": "${{ steps.report.outputs.latency_violations }}", "short": true},
+                    {"title": "Run", "value": "<${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Details>", "short": true},
+                    {"title": "Homepage", "value": "${{ steps.check_home.outputs.latency_ms }}ms / ${LATENCY_BUDGET_HOME}ms budget", "short": true},
+                    {"title": "Campaigns", "value": "${{ steps.check_campaigns.outputs.latency_ms }}ms / ${LATENCY_BUDGET_CAMPAIGN}ms budget", "short": true},
+                    {"title": "API", "value": "${{ steps.check_api.outputs.latency_ms }}ms / ${LATENCY_BUDGET_API}ms budget", "short": true}
+                  ]
+                }
+              ]
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          SLACK_WEBHOOK_TYPE: INCOMING_WEBHOOK
+
+      - name: Fail workflow on check failures
+        if: steps.report.outputs.failures != '0'
+        run: |
+          echo "❌ ${FAILURES} synthetic check(s) failed. Marking workflow as failed."
+          exit 1
+        env:
+          FAILURES: ${{ steps.report.outputs.failures }}

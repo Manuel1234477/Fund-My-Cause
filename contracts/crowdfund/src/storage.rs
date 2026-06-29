@@ -4,7 +4,7 @@
 use soroban_sdk::Symbol;
 
 /// Contract version for upgrades and compatibility tracking
-pub const CONTRACT_VERSION: u32 = 5;
+pub const CONTRACT_VERSION: u32 = 6;
 
 /// Minimum supported version for migration (versions below this require a full re-deploy)
 pub const MIN_SUPPORTED_VERSION: u32 = 1;
@@ -123,13 +123,25 @@ pub const KEY_EMERGENCY_PAUSE: Symbol = soroban_sdk::symbol_short!("EMPAUSE");
 /// Storage key for reentrancy lock (prevents reentrancy attacks)
 pub const KEY_REENTRANCY_LOCK: Symbol = soroban_sdk::symbol_short!("REENTLK");
 
-// ── Issue #698: Fee Mode ──────────────────────────────────────────────────────
-/// Storage key for the gross total raised (before per-contribution fee deductions)
-pub const KEY_GROSS_TOTAL: Symbol = soroban_sdk::symbol_short!("GROSSTOT");
+// ── Issue #704: Withdrawal streaming ─────────────────────────────────────────
+/// Storage key for optional streaming/scheduled-release config
+pub const KEY_STREAM: Symbol = soroban_sdk::symbol_short!("STREAM");
 
-// ── Issue #699: IPFS CID Anchoring ───────────────────────────────────────────
-/// Storage key for the campaign metadata IPFS content identifier (CID)
-pub const KEY_IPFS_CID: Symbol = soroban_sdk::symbol_short!("IPFSCID");
+// ── Issue #694: Soft-cap / stretch-goal ──────────────────────────────────────
+/// Storage key for the campaign soft cap (minimum viable funding target)
+pub const KEY_SOFT_CAP: Symbol = soroban_sdk::symbol_short!("SOFTCAP");
+/// Storage key for the campaign stretch goal (over-funding target)
+pub const KEY_STRETCH_GOAL: Symbol = soroban_sdk::symbol_short!("STRETCH");
+
+// ── Issue #695: Released-amount tracking ─────────────────────────────────────
+/// Storage key for the total amount already released to the creator via milestones
+pub const KEY_RELEASED: Symbol = soroban_sdk::symbol_short!("RELEASED");
+
+// ── Issue #696: Pause timelock ───────────────────────────────────────────────
+/// Storage key for the timelock duration (seconds) required before unpausing
+pub const KEY_PAUSE_TIMELOCK: Symbol = soroban_sdk::symbol_short!("PTLOCK");
+/// Storage key for the earliest timestamp at which the contract may be unpaused
+pub const KEY_UNPAUSE_AFTER: Symbol = soroban_sdk::symbol_short!("UNPAFTER");
 
 // ── Issue #694: Soft-cap / stretch-goal ──────────────────────────────────────
 /// Storage key for the campaign soft cap (minimum viable funding target)

@@ -1,0 +1,176 @@
+# Log-based Alerting Rules for Fund-My-Cause
+#
+# These rules are evaluated by Loki ruler (or Grafana alerting with a Loki datasource).
+# Each rule targets specific log patterns and is tuned to minimise false positives.
+# Every alert links to a runbook in docs/runbooks/.
+#
+# Deploy: copy this file to your Loki ruler configuration directory and reload Loki.
+# Grafana import: Alerting → Alert rules → Import YAML.
+
+groups:
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # Error-spike alerts
+  # ──────────────────────────────────────────────────────────────────────────
+  - name: error_spikes
+    interval: 1m
+    rules:
+
+      - alert: FrontendErrorSpike
+        # Fires when the frontend logs more than 5 errors per minute for 3 consecutive minutes.
+        # Using a rolling 5-minute rate to smooth transient bursts.
+        expr: |
+          sum(rate({service="frontend"} |= "level=error" [5m])) > 5/60
+        for: 3m
+        labels:
+          severity: critical
+          service: frontend
+          category: error_spike
+        annotations:
+          summary: "Frontend error spike detected"
+          description: >
+            The frontend service is logging more than 5 errors per minute.
+            Current rate: {{ $value | humanize }} errors/s.
+          runbook_url: "https://github.com/Fund-My-Cause/Fund-My-Cause/blob/main/docs/runbooks/frontend-error-spike.md"
+          dashboard_url: "http://grafana:3000/d/frontend-logs"
+
+      - alert: BackendErrorSpike
+        expr: |
+          sum(rate({service=~"indexer|graphql-api|monitoring-service"} |= "\"level\":\"error\"" [5m])) > 3/60
+        for: 3m
+        labels:
+          severity: critical
+          service: backend
+          category: error_spike
+        annotations:
+          summary: "Backend service error spike"
+          description: >
+            One or more backend services are logging more than 3 errors per minute.
+            Current rate: {{ $value | humanize }} errors/s.
+          runbook_url: "https://github.com/Fund-My-Cause/Fund-My-Cause/blob/main/docs/runbooks/backend-error-spike.md"
+          dashboard_url: "http://grafana:3000/d/backend-logs"
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # Failed-transaction alerts
+  # ──────────────────────────────────────────────────────────────────────────
+  - name: failed_transactions
+    interval: 1m
+    rules:
+
+      - alert: SorobanTransactionFailed
+        # Fires when more than 2 Soroban / contract transaction failures appear per minute.
+        expr: |
+          sum(rate({service=~"frontend|indexer"} |~ "(?i)(transaction failed|tx_failed|invoke.*error|soroban.*error)" [5m])) > 2/60
+        for: 2m
+        labels:
+          severity: critical
+          service: contracts
+          category: failed_transaction
+        annotations:
+          summary: "Soroban transaction failures detected"
+          description: >
+            Multiple smart-contract transaction failures are being logged.
+            Rate: {{ $value | humanize }} failures/s.
+            Check the Stellar testnet/mainnet for stuck transactions.
+          runbook_url: "https://github.com/Fund-My-Cause/Fund-My-Cause/blob/main/docs/runbooks/soroban-transaction-failures.md"
+          dashboard_url: "http://grafana:3000/d/contract-transactions"
+
+      - alert: ContributionFlowFailure
+        # Fires when the contribution flow logs failures — indicates users cannot donate.
+        expr: |
+          sum(rate({service="frontend"} |~ "(?i)(contribute.*fail|pledge.*fail|contribution.*error)" [5m])) > 0
+        for: 5m
+        labels:
+          severity: warning
+          service: frontend
+          category: failed_transaction
+        annotations:
+          summary: "Contribution flow failures logged"
+          description: >
+            The frontend is logging errors in the contribution / pledge flow.
+            This may prevent users from donating.
+          runbook_url: "https://github.com/Fund-My-Cause/Fund-My-Cause/blob/main/docs/runbooks/contribution-flow-failure.md"
+          dashboard_url: "http://grafana:3000/d/frontend-logs"
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # RPC-failure alerts
+  # ──────────────────────────────────────────────────────────────────────────
+  - name: rpc_failures
+    interval: 1m
+    rules:
+
+      - alert: StellarRPCFailure
+        # Fires when RPC/Horizon/Soroban API errors appear in logs.
+        expr: |
+          sum(rate({service=~"frontend|indexer|graphql-api"} |~ "(?i)(rpc.*error|horizon.*error|soroban.*rpc|network.*error|fetch.*failed)" [5m])) > 1/60
+        for: 2m
+        labels:
+          severity: critical
+          service: rpc
+          category: rpc_failure
+        annotations:
+          summary: "Stellar RPC failures detected"
+          description: >
+            Services are logging Stellar RPC or Horizon API failures.
+            Rate: {{ $value | humanize }} errors/s.
+            This may indicate the RPC endpoint is unreachable or rate-limiting.
+          runbook_url: "https://github.com/Fund-My-Cause/Fund-My-Cause/blob/main/docs/runbooks/stellar-rpc-failure.md"
+          dashboard_url: "http://grafana:3000/d/rpc-health"
+
+      - alert: RPCHighLatency
+        # Fires when RPC calls are repeatedly timing out in logs.
+        expr: |
+          sum(rate({service=~"frontend|indexer"} |~ "(?i)(timeout|timed out|ETIMEDOUT)" [5m])) > 2/60
+        for: 5m
+        labels:
+          severity: warning
+          service: rpc
+          category: rpc_failure
+        annotations:
+          summary: "High RPC latency / timeouts"
+          description: >
+            Repeated timeout errors are being logged for RPC calls.
+            Rate: {{ $value | humanize }} timeouts/s.
+          runbook_url: "https://github.com/Fund-My-Cause/Fund-My-Cause/blob/main/docs/runbooks/stellar-rpc-failure.md"
+          dashboard_url: "http://grafana:3000/d/rpc-health"
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # Availability / crash alerts
+  # ──────────────────────────────────────────────────────────────────────────
+  - name: availability
+    interval: 1m
+    rules:
+
+      - alert: ServiceCrashLoop
+        # Fires when any service logs fatal/panic/crash multiple times per minute.
+        expr: |
+          sum by (service) (rate({service=~".+"} |~ "(?i)(panic|fatal|uncaughtException|unhandledRejection|SIGSEGV)" [5m])) > 0
+        for: 2m
+        labels:
+          severity: critical
+          category: availability
+        annotations:
+          summary: "Service crash or panic loop: {{ $labels.service }}"
+          description: >
+            Service {{ $labels.service }} is logging panics or fatal errors.
+            Rate: {{ $value | humanize }} events/s.
+          runbook_url: "https://github.com/Fund-My-Cause/Fund-My-Cause/blob/main/docs/runbooks/service-crash.md"
+          dashboard_url: "http://grafana:3000/d/service-logs"
+
+      - alert: AuthenticationFailureSpike
+        # Fires when authentication / wallet errors spike — potential abuse.
+        expr: |
+          sum(rate({service="frontend"} |~ "(?i)(auth.*fail|wallet.*error|freighter.*error|sign.*rejected)" [5m])) > 10/60
+        for: 5m
+        labels:
+          severity: warning
+          service: frontend
+          category: security
+        annotations:
+          summary: "Authentication failure spike"
+          description: >
+            A spike in authentication failures is being logged by the frontend.
+            This may indicate a UX issue, broken wallet integration, or abuse.
+            Rate: {{ $value | humanize }} failures/s.
+          runbook_url: "https://github.com/Fund-My-Cause/Fund-My-Cause/blob/main/docs/runbooks/auth-failure-spike.md"
+          dashboard_url: "http://grafana:3000/d/frontend-logs"
