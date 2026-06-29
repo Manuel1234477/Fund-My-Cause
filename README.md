@@ -5,7 +5,7 @@ A decentralized crowdfunding platform built on the [Stellar](https://stellar.org
 [![CI Status](https://github.com/Fund-My-Cause/Fund-My-Cause/workflows/Rust%20CI/badge.svg)](https://github.com/Fund-My-Cause/Fund-My-Cause/actions)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
 [![Contract Version](https://img.shields.io/badge/contract-v0.1.0-brightgreen)](./contracts/crowdfund/Cargo.toml)
-![Coverage](https://img.shields.io/badge/coverage-80%25-green)
+[![Contract Coverage](https://img.shields.io/badge/contract%20coverage-80%25-green)](https://github.com/Fund-My-Cause/Fund-My-Cause/actions/workflows/contract-coverage.yml)
 
 ---
 
