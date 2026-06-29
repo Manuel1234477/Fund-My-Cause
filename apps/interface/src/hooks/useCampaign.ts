@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState, useCallback } from "react";
 import { fetchCampaignView, type CampaignInfo, type CampaignStats } from "@/lib/soroban";
 import { isValidContractId } from "@/lib/validation";
+import { QUERY_KEYS } from "@/lib/queryKeys";
 
 export interface CampaignInitialData {
   info: CampaignInfo;
@@ -29,17 +30,16 @@ export function useCampaign(contractId: string, initialData?: CampaignInitialDat
     { info: CampaignInfo; stats: CampaignStats },
     Error
   >({
-    queryKey: ["campaign", contractId],
+    queryKey: QUERY_KEYS.campaign(contractId),
     queryFn: () => fetchCampaignView(contractId),
     enabled: isValidContractId(contractId),
     retry: false,
     // SSR-preloaded data seeds the cache so the first render is instant and
     // the component never enters the loading skeleton state on page load.
     initialData: initialData ?? undefined,
-    // Treat SSR data as fresh for 30 s — within that window no background
-    // refetch is triggered, matching the ISR revalidation window.
+    // Treat SSR data as fresh for the staleTime window (set via setQueryDefaults
+    // in ReactQueryProvider) so the ISR page doesn't trigger an immediate refetch.
     initialDataUpdatedAt: initialData ? Date.now() : undefined,
-    staleTime: 30_000,
   });
 
   const error =
@@ -48,7 +48,7 @@ export function useCampaign(contractId: string, initialData?: CampaignInitialDat
 
   const refresh = useCallback(() => {
     setOptimisticDelta(null);
-    return queryClient.invalidateQueries({ queryKey: ["campaign", contractId] });
+    return queryClient.invalidateQueries({ queryKey: QUERY_KEYS.campaign(contractId) });
   }, [queryClient, contractId]);
 
   /** Immediately apply an optimistic contribution (amountXlm in XLM) */
@@ -98,7 +98,7 @@ export function useContribute(contractId: string) {
       const { contribute } = await import("@/lib/contract");
       return contribute(contractId, contributor, amount, signTx);
     },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["campaign", contractId] }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: QUERY_KEYS.campaign(contractId) }),
   });
 }
 
@@ -115,7 +115,7 @@ export function useWithdraw(contractId: string) {
       const { withdraw } = await import("@/lib/contract");
       return withdraw(contractId, creator, signTx);
     },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["campaign", contractId] }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: QUERY_KEYS.campaign(contractId) }),
   });
 }
 
@@ -132,7 +132,7 @@ export function useRefund(contractId: string) {
       const { refundSingle } = await import("@/lib/contract");
       return refundSingle(contractId, contributor, signTx);
     },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["campaign", contractId] }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: QUERY_KEYS.campaign(contractId) }),
   });
 }
 
@@ -151,7 +151,7 @@ export function useBatchRefund(contractId: string) {
       const { refundBatch } = await import("@/lib/contract");
       return refundBatch(contractId, caller, contributors, signTx);
     },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["campaign", contractId] }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: QUERY_KEYS.campaign(contractId) }),
   });
 }
 
@@ -168,7 +168,7 @@ export function usePause(contractId: string) {
       const { pauseCampaign } = await import("@/lib/contract");
       return pauseCampaign(contractId, admin, signTx);
     },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["campaign", contractId] }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: QUERY_KEYS.campaign(contractId) }),
   });
 }
 
@@ -185,6 +185,6 @@ export function useUnpause(contractId: string) {
       const { unpauseCampaign } = await import("@/lib/contract");
       return unpauseCampaign(contractId, admin, signTx);
     },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["campaign", contractId] }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: QUERY_KEYS.campaign(contractId) }),
   });
 }
