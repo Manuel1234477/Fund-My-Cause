@@ -51,6 +51,7 @@
 
 mod errors;
 mod helpers;
+mod lifecycle;
 mod recurring;
 mod security;
 mod storage;
