@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import "../globals.css";
 import "../rtl.css";
 import { WalletProvider } from "@/context/WalletContext";
+import { ModalProvider } from "@/context/ModalContext";
 import { ToastProvider } from "@/components/ui/Toast";
 import { ThemeProvider } from "@/context/ThemeContext";
 import { NotificationProvider } from "@/context/NotificationContext";
@@ -74,9 +75,11 @@ export default async function LocaleLayout({
                       <ComparisonProvider>
                         <BookmarkProvider>
                           <WalletProvider>
-                            <div id="main-content" role="main" tabIndex={-1} className="outline-none">
-                              {children}
-                            </div>
+                            <ModalProvider>
+                              <div id="main-content" role="main" tabIndex={-1} className="outline-none">
+                                {children}
+                              </div>
+                            </ModalProvider>
                           </WalletProvider>
                         </BookmarkProvider>
                       </ComparisonProvider>
