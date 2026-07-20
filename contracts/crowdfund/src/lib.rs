@@ -57,6 +57,7 @@ mod security;
 mod storage;
 mod types;
 mod validation;
+mod views;
 
 pub use errors::ContractError;
 pub use security::{ReentrancyGuard, CircuitBreaker, RateLimiter, InputValidator, AccessControl};
