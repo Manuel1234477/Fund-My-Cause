@@ -1,5 +1,6 @@
-import { getPool } from '../db/index.js';
-import { createLogger } from '../logger.js';
+import type { PoolClient } from 'pg';
+import { getPool } from './db/index.js';
+import { createLogger } from './logger.js';
 import { randomUUID } from 'crypto';
 
 const logger = createLogger('event-ingestor');
@@ -12,10 +13,8 @@ interface RawEvent {
   data: Record<string, unknown>;
 }
 
-interface Campaign {
-  id: string;
+interface CampaignInitData {
   creator: string;
-  contractId: string;
   tokenId: string;
   goal: bigint;
   deadline: number;
@@ -45,7 +44,7 @@ export async function ingestEvents(events: RawEvent[]): Promise<void> {
         let campaignId: string | null = null;
 
         if (event.type === 'initialize') {
-          const initData = event.data as Campaign;
+          const initData = event.data as unknown as CampaignInitData;
           campaignId = randomUUID();
 
           // Upsert campaign
@@ -111,7 +110,7 @@ export async function ingestEvents(events: RawEvent[]): Promise<void> {
 }
 
 async function processEvent(
-  client: any,
+  client: PoolClient,
   event: RawEvent,
   campaignId: string | null
 ): Promise<void> {

@@ -1,10 +1,7 @@
 import { GraphQLError } from "graphql";
 import type { IResolvers } from "@graphql-tools/utils";
-import type { Context } from "./types.js";
-import { CacheService } from "./services/cache.js";
-import { ContractService } from "./services/contract.js";
-import { DataLoaderService } from "./services/dataloader.js";
-import { PubSubService } from "./services/pubsub.js";
+import type { Context, Campaign } from "./types.js";
+import { CampaignStatus } from "./types.js";
 
 export const resolvers: IResolvers<any, Context> = {
   // Custom scalar resolvers
@@ -76,7 +73,7 @@ export const resolvers: IResolvers<any, Context> = {
         sort,
       });
 
-      const edges = campaigns.map((campaign, index) => ({
+      const edges = campaigns.map((campaign: Campaign, index: number) => ({
         node: campaign,
         cursor: Buffer.from(`${pagination.offset + index}`).toString("base64"),
       }));
@@ -97,7 +94,7 @@ export const resolvers: IResolvers<any, Context> = {
     },
 
     async activeCampaigns(_, { limit = 20 }, context: Context) {
-      return context.dataLoader.campaignsByStatus.load({ status: "ACTIVE", limit });
+      return context.dataLoader.campaignsByStatus.load({ status: CampaignStatus.ACTIVE, limit });
     },
 
     async trendingCampaigns(_, { limit = 10 }, context: Context) {
@@ -171,8 +168,8 @@ export const resolvers: IResolvers<any, Context> = {
       return user;
     },
 
-    async userContributions(_, { address, limit = 50 }, context: Context) {
-      return context.dataLoader.userContributions.load(address, limit);
+    async userContributions(_, { address }, context: Context) {
+      return context.dataLoader.userContributions.load(address);
     },
 
     async stats(_, __, context: Context) {
@@ -219,23 +216,6 @@ export const resolvers: IResolvers<any, Context> = {
           ),
         }));
     },
-  },
-
-  // Campaign field resolvers for related data
-  async topContributors(campaign, { limit = 10 }, context: Context) {
-    const contributors = await context.dataLoader.campaignContributors.load(
-      campaign.id
-    );
-
-    return contributors
-      .sort((a: any, b: any) => Number(b.amount - a.amount))
-      .slice(0, limit)
-      .map((contributor: any, index: number) => ({
-        rank: index + 1,
-        address: contributor.address,
-        amount: contributor.amount,
-        percentage: Number((contributor.amount * 100n) / campaign.raised),
-      }));
   },
 
   // User field resolvers

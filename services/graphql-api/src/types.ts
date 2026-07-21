@@ -1,6 +1,6 @@
 import type { RedisClientType } from "redis";
 import type DataLoader from "dataloader";
-import type { PubSub } from "graphql-subscriptions";
+import type { PubSubService } from "./services/pubsub.js";
 
 // Contract types
 export interface Campaign {
@@ -123,7 +123,7 @@ export interface Context {
   cache: any; // Redis cache service
   contractService: any; // Contract service
   dataLoader: DataLoaders;
-  pubsub: PubSub;
+  pubsub: PubSubService;
   authService: any; // Auth service
   user?: {
     address: string;

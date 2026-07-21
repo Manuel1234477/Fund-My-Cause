@@ -1,6 +1,7 @@
 import DataLoader from "dataloader";
 import type { ContractService } from "./contract.js";
 import type { Campaign, Contribution, User, Contributor, CampaignUpdate, Milestone, CampaignStatus, DataLoaders } from "../types.js";
+import { MilestoneStatus } from "../types.js";
 
 /**
  * Create DataLoader instances for batch loading
@@ -91,7 +92,7 @@ export function createDataLoaders(contractService: ContractService): DataLoaders
             description: "Reach 25% of goal",
             targetAmount: BigInt("2500000000"),
             releasePercentage: 25,
-            status: "REACHED",
+            status: MilestoneStatus.REACHED,
           },
           {
             id: `milestone_${campaignId}_2`,
@@ -100,7 +101,7 @@ export function createDataLoaders(contractService: ContractService): DataLoaders
             description: "Reach 50% of goal",
             targetAmount: BigInt("5000000000"),
             releasePercentage: 50,
-            status: "REACHED",
+            status: MilestoneStatus.REACHED,
           },
           {
             id: `milestone_${campaignId}_3`,
@@ -109,7 +110,7 @@ export function createDataLoaders(contractService: ContractService): DataLoaders
             description: "Reach 100% of goal",
             targetAmount: BigInt("10000000000"),
             releasePercentage: 100,
-            status: "PENDING",
+            status: MilestoneStatus.PENDING,
           },
         ];
         return milestones;

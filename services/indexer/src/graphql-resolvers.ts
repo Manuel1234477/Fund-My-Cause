@@ -1,6 +1,6 @@
 import { GraphQLObjectType, GraphQLSchema, GraphQLString, GraphQLInt, GraphQLField, GraphQLList, GraphQLBoolean, GraphQLEnumType, GraphQLScalarType, GraphQLNonNull } from 'graphql';
 import DataLoader from 'dataloader';
-import { createLogger } from '../logger.js';
+import { createLogger } from './logger.js';
 
 const logger = createLogger('graphql-resolvers');
 

@@ -18,10 +18,10 @@ const _pool = {
   query:   vi.fn(async () => ({ rows: [] })),
 };
 
-vi.mock("../db/index.js", () => ({ getPool: () => _pool }));
+vi.mock("./db/index.js", () => ({ getPool: () => _pool }));
 
 // Silence logger output in tests
-vi.mock("../logger.js", () => ({
+vi.mock("./logger.js", () => ({
   createLogger: () => ({
     info:  vi.fn(),
     debug: vi.fn(),

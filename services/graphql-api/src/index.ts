@@ -5,11 +5,12 @@ import { WebSocketServer } from "ws";
 import { useServer } from "graphql-ws/lib/use/ws";
 import { ApolloServer } from "@apollo/server";
 import { expressMiddleware } from "@apollo/server/express4";
+import { makeExecutableSchema } from "@graphql-tools/schema";
 import { createRedisClient } from "./redis.js";
 import { CacheService } from "./services/cache.js";
 import { ContractService } from "./services/contract.js";
 import { createDataLoaders } from "./services/dataloader.js";
-import { getPubSub } } from "./services/pubsub.js";
+import { getPubSub } from "./services/pubsub.js";
 import { AuthService } from "./services/auth.js";
 import { RateLimiterService } from "./services/rate-limiter.js";
 import { typeDefs } from "./schema.js";
@@ -134,21 +135,26 @@ async function startServer() {
       }
     });
 
+    // Build the executable schema once so it can be shared between Apollo
+    // Server (HTTP) and graphql-ws (subscriptions over WebSocket).
+    const schema = makeExecutableSchema<Context>({ typeDefs, resolvers });
+
     // Create Apollo Server
     const apolloServer = new ApolloServer<Context>({
-      typeDefs,
-      resolvers,
+      schema,
       introspection: NODE_ENV !== "production",
-      plugins: {
-        async serverWillStart() {
-          console.log("✅ Apollo Server starting");
-          return {
-            async drainServer() {
-              await pubsub.close();
-            },
-          };
+      plugins: [
+        {
+          async serverWillStart() {
+            console.log("✅ Apollo Server starting");
+            return {
+              async drainServer() {
+                await pubsub.close();
+              },
+            };
+          },
         },
-      },
+      ],
     });
 
     await apolloServer.start();
@@ -157,7 +163,7 @@ async function startServer() {
     // Setup WebSocket server for subscriptions
     const wsServer = new WebSocketServer({ server: httpServer, path: "/graphql" });
 
-    useServer({ schema: apolloServer.schema }, wsServer);
+    useServer({ schema }, wsServer);
     console.log("✅ WebSocket server configured");
 
     // Apply Apollo middleware

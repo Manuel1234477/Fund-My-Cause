@@ -1,4 +1,4 @@
-import { Keypair, Server, Networks, TransactionBuilder } from "@stellar/stellar-sdk";
+import { Keypair, rpc, Networks, TransactionBuilder } from "@stellar/stellar-sdk";
 import type {
   Campaign,
   Contribution,
@@ -15,13 +15,13 @@ import type {
  * Service for interacting with Stellar contracts
  */
 export class ContractService {
-  private server: Server;
+  private server: rpc.Server;
   private networkPassphrase: string;
 
   constructor(rpcUrl: string, networkType: "testnet" | "mainnet" = "testnet") {
-    this.server = new Server(rpcUrl);
+    this.server = new rpc.Server(rpcUrl);
     this.networkPassphrase =
-      networkType === "mainnet" ? Networks.PUBLIC_NETWORK : Networks.TESTNET_NETWORK;
+      networkType === "mainnet" ? Networks.PUBLIC : Networks.TESTNET;
   }
 
   /**
