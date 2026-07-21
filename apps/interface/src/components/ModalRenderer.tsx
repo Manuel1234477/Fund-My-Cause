@@ -1,32 +1,9 @@
 "use client";
 
-import React, {
-  createContext,
-  useCallback,
-  useContext,
-  useRef,
-  useState,
-} from "react";
+import React from "react";
 import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
-
-interface ModalConfig {
-  id: string;
-  title?: string;
-  content: React.ReactNode;
-  footer?: React.ReactNode;
-  size?: "sm" | "md" | "lg" | "xl";
-  closeOnBackdropClick?: boolean;
-  onClose?: () => void;
-}
-
-interface ModalContextType {
-  openModal: (config: Omit<ModalConfig, "id">) => string;
-  closeModal: (id: string) => void;
-  closeAll: () => void;
-}
-
-const ModalContext = createContext<ModalContextType | undefined>(undefined);
+import { useModalStore, type ModalConfig } from "@/store/useModalStore";
 
 const sizes: Record<NonNullable<ModalConfig["size"]>, string> = {
   sm: "max-w-sm",
@@ -111,34 +88,17 @@ function ModalItem({
   );
 }
 
-export function ModalProvider({ children }: { children: React.ReactNode }) {
-  const [stack, setStack] = useState<ModalConfig[]>([]);
-  const counterRef = useRef(0);
-
-  const openModal = useCallback((config: Omit<ModalConfig, "id">) => {
-    const id = `modal-${++counterRef.current}`;
-    setStack((prev) => [...prev, { ...config, id }]);
-    return id;
-  }, []);
-
-  const closeModal = useCallback((id: string) => {
-    setStack((prev) => {
-      const modal = prev.find((m) => m.id === id);
-      modal?.onClose?.();
-      return prev.filter((m) => m.id !== id);
-    });
-  }, []);
-
-  const closeAll = useCallback(() => {
-    setStack((prev) => {
-      prev.forEach((m) => m.onClose?.());
-      return [];
-    });
-  }, []);
+/**
+ * Renders whatever useModal()'s openModal() has pushed onto the stack.
+ * Mount this once near the app root — Zustand's store is a singleton so no
+ * Provider wrapping is needed.
+ */
+export function ModalRenderer() {
+  const stack = useModalStore((s) => s.stack);
+  const closeModal = useModalStore((s) => s.closeModal);
 
   return (
-    <ModalContext.Provider value={{ openModal, closeModal, closeAll }}>
-      {children}
+    <>
       {stack.map((modal, index) => (
         <ModalItem
           key={modal.id}
@@ -148,12 +108,6 @@ export function ModalProvider({ children }: { children: React.ReactNode }) {
           onClose={() => closeModal(modal.id)}
         />
       ))}
-    </ModalContext.Provider>
+    </>
   );
-}
-
-export function useModal() {
-  const ctx = useContext(ModalContext);
-  if (!ctx) throw new Error("useModal must be used within a ModalProvider");
-  return ctx;
 }

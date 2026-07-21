@@ -10,7 +10,7 @@ import { ShareButton } from "@/components/ui/ShareButton";
 import { ContributionLeaderboard } from "@/components/ui/ContributionLeaderboard";
 import { EmbedCodeGenerator } from "@/components/ui/EmbedCodeGenerator";
 import { useCampaign, type CampaignInitialData } from "@/hooks/useCampaign";
-import { useWallet } from "@/context/WalletContext";
+import { useWallet } from "@/hooks/useWallet";
 import { CampaignActions } from "./CampaignActions";
 import { formatXLM, formatAddress } from "@/lib/format";
 import { SimilarCampaigns } from "@/components/ui/SimilarCampaigns";
@@ -92,7 +92,8 @@ function buildActivities(
   }
 
   // Milestone at 25%, 50%, 75%
-  const pct = stats.goal > 0n ? Number((stats.totalRaised * 100n) / stats.goal) : 0;
+  const pct =
+    stats.goal > 0n ? Number((stats.totalRaised * 100n) / stats.goal) : 0;
   for (const threshold of [25, 50, 75]) {
     if (pct >= threshold) {
       items.push({
@@ -141,8 +142,20 @@ export function CampaignDetailContent({
   // Read pause reason from localStorage (set by admin when pausing from dashboard)
   const pauseReason =
     typeof window !== "undefined"
-      ? localStorage.getItem(`fmc:pause_reason:${contractId}`) ?? undefined
+      ? (localStorage.getItem(`fmc:pause_reason:${contractId}`) ?? undefined)
       : undefined;
+
+  // Show celebration once for the creator when goal is met
+  useEffect(() => {
+    if (!info || !stats) return;
+    const goalMet = stats.totalRaised >= stats.goal;
+    const isCreator = !!address && address === info.creator;
+    if (goalMet && isCreator && !celebratedRef.current) {
+      celebratedRef.current = true;
+      setShowConfetti(true);
+      setShowSuccessModal(true);
+    }
+  }, [info, stats, address]);
 
   if (loading) {
     return (
@@ -178,16 +191,6 @@ export function CampaignDetailContent({
   const deadlinePassed = Number(info.deadline) * 1000 < Date.now();
   const goalMet = stats.totalRaised >= stats.goal;
   const totalRaisedXlm = Number(stats.totalRaised) / 1e7;
-  const isCreator = !!address && address === info.creator;
-
-  // Show celebration once for the creator when goal is met
-  useEffect(() => {
-    if (goalMet && isCreator && !celebratedRef.current) {
-      celebratedRef.current = true;
-      setShowConfetti(true);
-      setShowSuccessModal(true);
-    }
-  }, [goalMet, isCreator]);
 
   return (
     <>
@@ -198,7 +201,10 @@ export function CampaignDetailContent({
           campaignTitle={info.title}
           totalRaisedXlm={totalRaisedXlm}
           onClose={() => setShowSuccessModal(false)}
-          onShare={() => { setShowSuccessModal(false); setShowShareModal(true); }}
+          onShare={() => {
+            setShowSuccessModal(false);
+            setShowShareModal(true);
+          }}
           onWithdraw={() => setShowSuccessModal(false)}
           alreadyWithdrawn={info.status === "Successful"}
         />
@@ -283,7 +289,9 @@ export function CampaignDetailContent({
         {/* Video player — show if campaign has a videoUrl in mock data */}
         {(() => {
           const mockCampaign = ALL_CAMPAIGNS.find((c) => c.id === contractId);
-          return mockCampaign?.videoUrl ? <VideoPlayer url={mockCampaign.videoUrl} /> : null;
+          return mockCampaign?.videoUrl ? (
+            <VideoPlayer url={mockCampaign.videoUrl} />
+          ) : null;
         })()}
 
         <ContributionLeaderboard
@@ -364,13 +372,16 @@ export function CampaignDetailContent({
         {/* Team Members */}
         {(() => {
           const mock = ALL_CAMPAIGNS.find((c) => c.id === contractId);
-          const members = (mock as { teamMembers?: unknown[] } | undefined)?.teamMembers;
+          const members = (mock as { teamMembers?: unknown[] } | undefined)
+            ?.teamMembers;
           if (!members || members.length === 0) return null;
           return (
             <div className="space-y-3">
               <h2 className="text-lg font-semibold">Team</h2>
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                {(members as Parameters<typeof TeamMemberCard>[0]["member"][]).map((m) => (
+                {(
+                  members as Parameters<typeof TeamMemberCard>[0]["member"][]
+                ).map((m) => (
                   <TeamMemberCard key={m.id} member={m} />
                 ))}
               </div>
@@ -386,7 +397,9 @@ export function CampaignDetailContent({
           return (
             <div className="space-y-3">
               <h2 className="text-lg font-semibold">FAQ</h2>
-              <FAQAccordion faqs={faqs as Parameters<typeof FAQAccordion>[0]["faqs"]} />
+              <FAQAccordion
+                faqs={faqs as Parameters<typeof FAQAccordion>[0]["faqs"]}
+              />
             </div>
           );
         })()}

@@ -8,11 +8,11 @@ jest.mock("next/navigation", () => ({
   useRouter: () => ({ push: jest.fn() }),
 }));
 
-jest.mock("@/context/WalletContext", () => ({
+jest.mock("@/hooks/useWallet", () => ({
   useWallet: jest.fn(),
 }));
 
-jest.mock("@/context/NotificationContext", () => ({
+jest.mock("@/hooks/useNotifications", () => ({
   useNotifications: () => ({ addNotification: jest.fn() }),
 }));
 
@@ -25,7 +25,13 @@ jest.mock("@/components/layout/Navbar", () => ({
 }));
 
 jest.mock("@/components/WalletGuard", () => ({
-  WalletGuard: ({ children, message }: { children: React.ReactNode; message: string }) => (
+  WalletGuard: ({
+    children,
+    message,
+  }: {
+    children: React.ReactNode;
+    message: string;
+  }) => (
     <div data-testid="wallet-guard" data-message={message}>
       {children}
     </div>
@@ -68,7 +74,7 @@ jest.mock("@/lib/soroban", () => ({
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-const { useWallet } = jest.requireMock("@/context/WalletContext");
+const { useWallet } = jest.requireMock("@/hooks/useWallet");
 const { useCampaign } = jest.requireMock("@/hooks/useCampaign");
 
 const mockCampaignData = {
@@ -99,10 +105,16 @@ function setupLocalStorage(
   contributed: string[] = [],
 ) {
   if (created.length > 0) {
-    localStorage.setItem("fmc:campaigns", JSON.stringify({ [address]: created }));
+    localStorage.setItem(
+      "fmc:campaigns",
+      JSON.stringify({ [address]: created }),
+    );
   }
   if (contributed.length > 0) {
-    localStorage.setItem("fmc:contributions", JSON.stringify({ [address]: contributed }));
+    localStorage.setItem(
+      "fmc:contributions",
+      JSON.stringify({ [address]: contributed }),
+    );
   }
 }
 
@@ -133,7 +145,9 @@ describe("DashboardPage", () => {
 
   it("shows empty backed campaigns message when no contributions", () => {
     render(<DashboardPage />);
-    expect(screen.getByText(/haven't backed any campaigns/)).toBeInTheDocument();
+    expect(
+      screen.getByText(/haven't backed any campaigns/),
+    ).toBeInTheDocument();
   });
 
   it("renders created campaign cards from localStorage", async () => {
@@ -193,7 +207,11 @@ describe("DashboardPage", () => {
       expect(screen.getByText("Test Campaign")).toBeInTheDocument();
     });
 
-    useWallet.mockReturnValue({ address: null, signTx: jest.fn(), networkMismatch: false });
+    useWallet.mockReturnValue({
+      address: null,
+      signTx: jest.fn(),
+      networkMismatch: false,
+    });
     rerender(<DashboardPage />);
 
     await waitFor(() => {

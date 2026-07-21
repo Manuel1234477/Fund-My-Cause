@@ -1,11 +1,10 @@
 import type { Metadata, Viewport } from "next";
 import "../globals.css";
 import "../rtl.css";
-import { WalletProvider } from "@/context/WalletContext";
-import { ModalProvider } from "@/context/ModalContext";
+import { WalletSelectModalHost } from "@/components/WalletSelectModalHost";
+import { ModalRenderer } from "@/components/ModalRenderer";
 import { ToastProvider } from "@/components/ui/Toast";
-import { ThemeProvider } from "@/context/ThemeContext";
-import { NotificationProvider } from "@/context/NotificationContext";
+import { ThemeInitializer } from "@/components/ThemeInitializer";
 import { NotificationPreferencesProvider } from "@/context/NotificationPreferencesContext";
 import { CurrencyProvider } from "@/context/CurrencyContext";
 import { ComparisonProvider } from "@/context/ComparisonContext";
@@ -13,7 +12,6 @@ import { BookmarkProvider } from "@/context/BookmarkContext";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { ErrorHandlerInitializer } from "@/components/ErrorHandlerInitializer";
 import { SkipNav } from "@/components/ui/SkipNav";
-import { BreadcrumbProvider } from "@/context/BreadcrumbContext";
 import { NextIntlClientProvider } from "next-intl";
 import { getMessages } from "next-intl/server";
 import { rtlLocales, type Locale } from "@/i18n/config";
@@ -67,27 +65,30 @@ export default async function LocaleLayout({
         <ErrorBoundary level="page">
           <ErrorHandlerInitializer />
           <NextIntlClientProvider messages={messages}>
-            <ThemeProvider>
+            <ThemeInitializer>
               <ToastProvider>
                 <NotificationPreferencesProvider>
-                  <NotificationProvider>
-                    <CurrencyProvider>
-                      <ComparisonProvider>
-                        <BookmarkProvider>
-                          <WalletProvider>
-                            <ModalProvider>
-                              <div id="main-content" role="main" tabIndex={-1} className="outline-none">
-                                {children}
-                              </div>
-                            </ModalProvider>
-                          </WalletProvider>
-                        </BookmarkProvider>
-                      </ComparisonProvider>
-                    </CurrencyProvider>
-                  </NotificationProvider>
+                  <CurrencyProvider>
+                    <ComparisonProvider>
+                      <BookmarkProvider>
+                        <CommandPaletteProvider>
+                          <div
+                            id="main-content"
+                            role="main"
+                            tabIndex={-1}
+                            className="outline-none"
+                          >
+                            {children}
+                          </div>
+                        </CommandPaletteProvider>
+                        <WalletSelectModalHost />
+                        <ModalRenderer />
+                      </BookmarkProvider>
+                    </ComparisonProvider>
+                  </CurrencyProvider>
                 </NotificationPreferencesProvider>
               </ToastProvider>
-            </ThemeProvider>
+            </ThemeInitializer>
           </NextIntlClientProvider>
         </ErrorBoundary>
       </body>
