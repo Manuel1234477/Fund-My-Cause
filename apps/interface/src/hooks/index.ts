@@ -27,11 +27,5 @@ export type { SearchSuggestion } from "./useSearchSuggestions";
 export { useBackButton } from "./useBackButton";
 export type { UseBackButtonOptions, UseBackButtonReturn } from "./useBackButton";
 
-// Redux hooks (state management)
-export { useWallet } from "./useWallet";
-export { useTheme } from "./useTheme";
-export { useNotifications } from "./useNotifications";
-export { useModal } from "./useModal";
-
 // PWA hooks
 export { useInstallPrompt } from "./useInstallPrompt";

@@ -44,6 +44,7 @@ pub use storage::*;
 pub use types::*;
 pub use validation::*;
 
+use common::{AccessControl, CommonError};
 use soroban_sdk::{contract, contractimpl, Address, String, Vec, Env, map};
 
 /// Main achievement contract
@@ -59,10 +60,10 @@ impl AchievementsContract {
     /// * `admin` - The administrator address for the contract
     /// * `platform_address` - Platform address for fee collection
     pub fn initialize(env: Env, admin: Address, platform_address: Address) -> Result<(), ContractError> {
-        admin.require_auth();
+        AccessControl::require_role_auth(&admin);
 
         if env.storage().instance().has(&storage::KEY_ADMIN) {
-            return Err(ContractError::AlreadyInitialized);
+            return Err(CommonError::AlreadyInitialized.into());
         }
 
         env.storage().instance().set(&storage::KEY_ADMIN, &admin);
@@ -182,8 +183,12 @@ impl AchievementsContract {
         points: u32,
     ) -> Result<u32, ContractError> {
         // Only contract admins can call this
-        let admin: Address = env.storage().instance().get(&storage::KEY_ADMIN)?;
-        admin.require_auth();
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&storage::KEY_ADMIN)
+            .ok_or(ContractError::Unauthorized)?;
+        AccessControl::require_role_auth(&admin);
 
         award_points(&env, &user, points)?;
 

@@ -15,7 +15,7 @@ import { AdvancedSearch } from "@/components/search/AdvancedSearch";
 import { SearchResults } from "@/components/search/SearchResults";
 import { useAdvancedSearch } from "@/hooks/useAdvancedSearch";
 import { useSavedSearches } from "@/hooks/useSavedSearches";
-import { useWallet } from "@/context/WalletContext";
+import { useWallet } from "@/hooks/useWallet";
 
 // ── Inner component (requires useSearchParams, wrapped in Suspense) ────────────
 
@@ -113,7 +113,9 @@ function CampaignsInner() {
       {selected.length > 0 && (
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 bg-gray-900 border border-gray-700 rounded-2xl px-5 py-3 shadow-2xl">
           <GitCompare size={16} className="text-indigo-400" />
-          <span className="text-sm text-gray-300">{selected.length} selected</span>
+          <span className="text-sm text-gray-300">
+            {selected.length} selected
+          </span>
           <Link
             href="/compare"
             className="px-4 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-sm font-medium transition"

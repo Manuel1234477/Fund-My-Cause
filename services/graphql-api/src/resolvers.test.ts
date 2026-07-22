@@ -169,7 +169,7 @@ describe("resolvers", () => {
 
       expect(result).toBe(campaigns);
       expect(context.dataLoader.campaignsByStatus.load).toHaveBeenCalledWith({
-        status: "ACTIVE",
+        status: "Active",
         limit: 5,
       });
     });

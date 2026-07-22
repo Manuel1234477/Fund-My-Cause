@@ -4,7 +4,7 @@ import React, { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Navbar } from "@/components/layout/Navbar";
 import { WalletGuard } from "@/components/WalletGuard";
-import { useWallet } from "@/context/WalletContext";
+import { useWallet } from "@/hooks/useWallet";
 import { buildInitializeTx, submitSignedTx } from "@/lib/soroban";
 import {
   validateTitle,
@@ -24,7 +24,7 @@ import { CampaignPreview } from "@/components/ui/CampaignPreview";
 import { VideoUploader } from "@/components/ui/VideoUploader";
 import { ImageUploader } from "@/components/ui/ImageUploader";
 import type { FAQ, TeamMember } from "@/types/campaign";
-import { getAccessibleInputProps, getErrorId, getInstructionId } from "@/lib/accessibleFormUtils";
+import { getAccessibleInputProps, getErrorId } from "@/lib/accessibleFormUtils";
 import {
   CheckCircle2,
   XCircle,
@@ -116,14 +116,24 @@ interface FieldWithErrorProps {
   hasInstructions?: boolean;
 }
 
-function FieldWithError({ label, error, children, fieldName, required, hasInstructions }: FieldWithErrorProps) {
+function FieldWithError({
+  label,
+  error,
+  children,
+  fieldName,
+  required,
+  hasInstructions,
+}: FieldWithErrorProps) {
   const accessibleProps = fieldName
     ? getAccessibleInputProps(fieldName, !!required, error, hasInstructions)
     : {};
 
   const childrenWithProps = React.Children.map(children, (child) => {
     if (React.isValidElement(child) && fieldName) {
-      return React.cloneElement(child, accessibleProps as Record<string, unknown>);
+      return React.cloneElement(
+        child,
+        accessibleProps as Record<string, unknown>,
+      );
     }
     return child;
   });
@@ -132,11 +142,21 @@ function FieldWithError({ label, error, children, fieldName, required, hasInstru
     <div>
       <label className={labelCls}>
         {label}
-        {required && <span aria-hidden="true" className="text-red-500 ml-0.5">*</span>}
+        {required && (
+          <span aria-hidden="true" className="text-red-500 ml-0.5">
+            *
+          </span>
+        )}
       </label>
       {childrenWithProps}
       {error && fieldName && (
-        <p id={getErrorId(fieldName)} role="alert" className="text-red-500 dark:text-red-400 text-xs mt-1">{error}</p>
+        <p
+          id={getErrorId(fieldName)}
+          role="alert"
+          className="text-red-500 dark:text-red-400 text-xs mt-1"
+        >
+          {error}
+        </p>
       )}
       {error && !fieldName && (
         <p className="text-red-500 dark:text-red-400 text-xs mt-1">{error}</p>
@@ -180,7 +200,12 @@ function Step1({
           onChange={(e) => set("token", e.target.value)}
         />
       </Field>
-      <FieldWithError label="Title" error={titleError} fieldName="title" required>
+      <FieldWithError
+        label="Title"
+        error={titleError}
+        fieldName="title"
+        required
+      >
         <input
           className={inputCls}
           placeholder="My Campaign"
@@ -188,7 +213,12 @@ function Step1({
           onChange={(e) => set("title", e.target.value)}
         />
       </FieldWithError>
-      <FieldWithError label="Description" error={descError} fieldName="description" required>
+      <FieldWithError
+        label="Description"
+        error={descError}
+        fieldName="description"
+        required
+      >
         <textarea
           rows={3}
           className={inputCls}
@@ -212,7 +242,12 @@ function Step1({
         </select>
       </Field>
       <div className="grid grid-cols-2 gap-4">
-        <FieldWithError label="Goal (XLM)" error={goalError} fieldName="goal" required>
+        <FieldWithError
+          label="Goal (XLM)"
+          error={goalError}
+          fieldName="goal"
+          required
+        >
           <input
             type="number"
             min="1"
@@ -222,7 +257,12 @@ function Step1({
             onChange={(e) => set("goal", e.target.value)}
           />
         </FieldWithError>
-        <FieldWithError label="Min Contribution (XLM)" error={minContribError} fieldName="minContribution" required>
+        <FieldWithError
+          label="Min Contribution (XLM)"
+          error={minContribError}
+          fieldName="minContribution"
+          required
+        >
           <input
             type="number"
             min="1"
@@ -233,7 +273,12 @@ function Step1({
           />
         </FieldWithError>
       </div>
-      <FieldWithError label="Deadline" error={deadlineError} fieldName="deadline" required>
+      <FieldWithError
+        label="Deadline"
+        error={deadlineError}
+        fieldName="deadline"
+        required
+      >
         <input
           type="date"
           className={inputCls}

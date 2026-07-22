@@ -17,12 +17,7 @@ export default [
         process: "readonly",
         setTimeout: "readonly",
         clearTimeout: "readonly",
-        setInterval: "readonly",
-        clearInterval: "readonly",
         fetch: "readonly",
-        Buffer: "readonly",
-        performance: "readonly",
-        URL: "readonly",
       },
     },
     plugins: {

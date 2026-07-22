@@ -13,7 +13,7 @@ import {
 import type { Comment } from "@/types/comment";
 import { formatAddress } from "@/lib/format";
 import { sanitizeComment } from "@/lib/sanitize";
-import { useWallet } from "@/context/WalletContext";
+import { useWallet } from "@/hooks/useWallet";
 
 interface Props {
   campaignId: string;
@@ -22,7 +22,10 @@ interface Props {
   onVote: (commentId: string, type: "up" | "down") => Promise<void>;
   onFlag: (commentId: string, reason?: string) => Promise<void>;
   onDelete: (commentId: string) => Promise<void>;
-  onModerate?: (commentId: string, action: "approve" | "reject") => Promise<void>;
+  onModerate?: (
+    commentId: string,
+    action: "approve" | "reject",
+  ) => Promise<void>;
   isCreator: boolean;
   pendingComments?: Comment[];
 }
@@ -204,7 +207,10 @@ export function CommentSection({
                     Report
                   </button>
                   <button
-                    onClick={() => { setFlaggingId(null); setFlagReason(""); }}
+                    onClick={() => {
+                      setFlaggingId(null);
+                      setFlagReason("");
+                    }}
                     className="px-3 py-1.5 rounded-lg bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 text-xs font-medium transition"
                   >
                     Cancel
@@ -291,12 +297,21 @@ export function CommentSection({
             Moderation Queue ({pendingComments.length})
           </h4>
           {pendingComments.map((pc) => (
-            <div key={pc.id} className="flex items-start gap-2 py-2 border-b border-amber-200 dark:border-amber-800 last:border-0">
+            <div
+              key={pc.id}
+              className="flex items-start gap-2 py-2 border-b border-amber-200 dark:border-amber-800 last:border-0"
+            >
               <div className="flex-1 min-w-0">
-                <p className="text-xs text-gray-500">{formatAddress(pc.author)}</p>
-                <p className="text-sm text-gray-800 dark:text-gray-200 truncate">{pc.content}</p>
+                <p className="text-xs text-gray-500">
+                  {formatAddress(pc.author)}
+                </p>
+                <p className="text-sm text-gray-800 dark:text-gray-200 truncate">
+                  {pc.content}
+                </p>
                 {pc.flagReason && (
-                  <p className="text-xs text-red-500 mt-1">Reason: {pc.flagReason}</p>
+                  <p className="text-xs text-red-500 mt-1">
+                    Reason: {pc.flagReason}
+                  </p>
                 )}
               </div>
               <div className="flex gap-1 shrink-0">

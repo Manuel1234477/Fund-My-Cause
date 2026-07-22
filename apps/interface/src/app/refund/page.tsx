@@ -6,7 +6,7 @@ import { Navbar } from "@/components/layout/Navbar";
 import { WalletGuard } from "@/components/WalletGuard";
 import { ProgressBar } from "@/components/ui/ProgressBar";
 import { ALL_CAMPAIGNS } from "@/lib/campaigns";
-import { useWallet } from "@/context/WalletContext";
+import { useWallet } from "@/hooks/useWallet";
 import { buildRefundTx, submitSignedTx } from "@/lib/soroban";
 
 // ── Confirmation dialog ───────────────────────────────────────────────────────
@@ -90,7 +90,9 @@ function RefundCard({
               : "bg-red-900 text-red-300"
           }`}
         >
-          <span aria-hidden="true">{campaign.status === "Refunded" ? "↩" : "✗"}</span>
+          <span aria-hidden="true">
+            {campaign.status === "Refunded" ? "↩" : "✗"}
+          </span>
           {campaign.status}
         </span>
       </div>

@@ -16,6 +16,8 @@
     "test:load:smoke": "artillery run load-test-smoke.yml"
   },
   "dependencies": {
+    "@fund-my-cause/types": "file:../../packages/types",
+    "@fund-my-cause/sdk": "file:../../sdks/js",
     "@apollo/server": "^4.10.0",
     "@graphql-tools/schema": "^9.0.19",
     "@graphql-tools/utils": "^10.0.0",

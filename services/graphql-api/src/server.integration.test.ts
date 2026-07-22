@@ -7,10 +7,8 @@ import type { Context } from "./types.js";
 /**
  * Integration test that exercises a real Apollo Server instance — built from the
  * actual schema + resolvers, not a hand-rolled subset — through a full GraphQL
- * request/response cycle via executeOperation. This is a well-defined test double
- * for the surrounding services (cache/contract/dataloader/pubsub/auth), since the
- * real ContractService currently returns static mock data itself (see contract.ts;
- * tracked separately for real chain integration).
+ * request/response cycle via executeOperation. contractService is mocked here
+ * since the real ContractService (contract.ts) makes live Soroban RPC calls.
  */
 function createMockContext(overrides: Partial<Context> = {}): Context {
   const dataLoader = {
@@ -68,7 +66,7 @@ const sampleCampaign = (overrides: Record<string, any> = {}) => ({
   goal: BigInt("10000000000"),
   raised: BigInt("5000000000"),
   deadline: new Date(Date.now() + 10 * 24 * 60 * 60 * 1000).toISOString(),
-  status: "ACTIVE",
+  status: "Active",
   category: "Health",
   minContribution: BigInt("1000000"),
   totalContributors: 10,
