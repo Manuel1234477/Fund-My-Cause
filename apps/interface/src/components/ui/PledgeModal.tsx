@@ -2,7 +2,7 @@
 
 import React, { useState, useRef, useEffect } from "react";
 import { X } from "lucide-react";
-import { useWallet } from "@/context/WalletContext";
+import { useWallet } from "@/hooks/useWallet";
 import { TransactionStatus, TxStatus } from "@/components/ui/TransactionStatus";
 import { useToast } from "@/components/ui/Toast";
 import { ReceiptModal } from "@/components/ui/ReceiptModal";
@@ -221,7 +221,11 @@ export function PledgeModal({
               )}
               {/* ── Suggestion chips ─────────────────────────────────────── */}
               {suggestions.length > 0 && (
-                <div className="flex flex-wrap gap-2 pt-1" role="group" aria-label="Suggested amounts">
+                <div
+                  className="flex flex-wrap gap-2 pt-1"
+                  role="group"
+                  aria-label="Suggested amounts"
+                >
                   {suggestions.map((s) => {
                     const xlmValue = (Number(s.amountStroops) / 1e7).toString();
                     return (
@@ -235,7 +239,11 @@ export function PledgeModal({
                             ? "bg-indigo-600 border-indigo-500 text-white hover:bg-indigo-500"
                             : "bg-gray-800 border-gray-700 text-gray-300 hover:border-indigo-500 hover:text-white"
                         } disabled:opacity-40`}
-                        aria-label={s.completesGoal ? `${s.label} — completes goal` : s.label}
+                        aria-label={
+                          s.completesGoal
+                            ? `${s.label} — completes goal`
+                            : s.label
+                        }
                       >
                         {s.label}
                       </button>

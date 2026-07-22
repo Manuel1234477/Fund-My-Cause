@@ -2,19 +2,21 @@
 
 import React, { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Loader2, PlusCircle, BarChart2, TrendingUp, Users, Wallet } from "lucide-react";
+import { useQueries } from "@tanstack/react-query";
+import { Loader2, PlusCircle, TrendingUp, Users, Wallet } from "lucide-react";
 import { Navbar } from "@/components/layout/Navbar";
 import { ProgressBar } from "@/components/ui/ProgressBar";
 import { WalletGuard } from "@/components/WalletGuard";
-import { EmptyState, NoDashboardCampaignsIllustration } from "@/components/ui/EmptyState";
+import {
+  EmptyState,
+  NoDashboardCampaignsIllustration,
+} from "@/components/ui/EmptyState";
 import { DeadlineExtensionModal } from "@/components/ui/DeadlineExtensionModal";
-import { AnalyticsDashboard } from "@/components/ui/AnalyticsDashboard";
 import { CancelCampaignModal } from "@/components/ui/CancelCampaignModal";
 import { NextActionsPanel } from "@/components/ui/NextActionsPanel";
 import { PostUpdateModal } from "@/components/ui/PostUpdateModal";
-import { formatXLM } from "@/lib/format";
-import { useWallet } from "@/context/WalletContext";
-import { useNotifications } from "@/context/NotificationContext";
+import { useWallet } from "@/hooks/useWallet";
+import { useNotifications } from "@/hooks/useNotifications";
 import { useCampaign } from "@/hooks/useCampaign";
 import type { CampaignStatus } from "@/types/soroban";
 import type { Campaign } from "@/types/campaign";
@@ -25,7 +27,10 @@ import {
   buildUnpauseTx,
   buildUpdateMetadataTx,
   submitSignedTx,
+  fetchCampaignView,
 } from "@/lib/soroban";
+import { isValidContractId } from "@/lib/validation";
+import { QUERY_KEYS } from "@/lib/queryKeys";
 
 const REGISTRY_KEY = "fmc:campaigns";
 const CONTRIBUTIONS_KEY = "fmc:contributions";
@@ -50,10 +55,6 @@ function getContributedIds(address: string): string[] {
   } catch {
     return [];
   }
-}
-
-function formatXlm(value: bigint) {
-  return formatXLM(value);
 }
 
 const STATUS_STYLES: Record<CampaignStatus, string> = {
@@ -101,11 +102,15 @@ function EditModal({
 
   React.useEffect(() => {
     triggerRef.current = document.activeElement;
-    return () => { (triggerRef.current as HTMLElement | null)?.focus(); };
+    return () => {
+      (triggerRef.current as HTMLElement | null)?.focus();
+    };
   }, []);
 
   React.useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape" && !saving) onClose(); };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && !saving) onClose();
+    };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
   }, [onClose, saving]);
@@ -138,9 +143,16 @@ function EditModal({
         aria-labelledby="edit-modal-title"
         className="w-full max-w-md space-y-4 rounded-2xl border border-gray-700 bg-gray-900 p-6"
       >
-        <h2 id="edit-modal-title" className="text-lg font-semibold">Edit Metadata</h2>
+        <h2 id="edit-modal-title" className="text-lg font-semibold">
+          Edit Metadata
+        </h2>
         <div>
-          <label htmlFor="edit-title" className="mb-1 block text-sm text-gray-400">Title</label>
+          <label
+            htmlFor="edit-title"
+            className="mb-1 block text-sm text-gray-400"
+          >
+            Title
+          </label>
           <input
             id="edit-title"
             className={inputCls}
@@ -151,7 +163,10 @@ function EditModal({
           />
         </div>
         <div>
-          <label htmlFor="edit-description" className="mb-1 block text-sm text-gray-400">
+          <label
+            htmlFor="edit-description"
+            className="mb-1 block text-sm text-gray-400"
+          >
             Description
           </label>
           <textarea
@@ -200,16 +215,26 @@ function DashboardCampaignCard({
 }: {
   contractId: string;
   actionPending: string | null;
-  onAction: (contractId: string, action: "withdraw" | "cancel") => Promise<void>;
+  onAction: (
+    contractId: string,
+    action: "withdraw" | "cancel",
+  ) => Promise<void>;
   onCancel: (contractId: string, title: string) => void;
-  onPauseToggle: (contractId: string, currentlyPaused: boolean) => Promise<void>;
+  onPauseToggle: (
+    contractId: string,
+    currentlyPaused: boolean,
+  ) => Promise<void>;
   onEdit: (campaign: EditableCampaign) => void;
   onExtend: (contractId: string, currentDeadline: string) => void;
   onPostUpdate: (contractId: string, title: string) => void;
   postUpdateDisabled: boolean;
   refreshNonce: number;
 }) {
-  const { info, stats, loading } = useCampaign(contractId);
+  const { info, stats, loading, refresh } = useCampaign(contractId);
+
+  useEffect(() => {
+    if (refreshNonce > 0) refresh();
+  }, [refreshNonce, refresh]);
 
   if (loading || !info || !stats) {
     return (
@@ -219,19 +244,22 @@ function DashboardCampaignCard({
     );
   }
 
-  const fmtXlm = (n: number) => n.toLocaleString(undefined, { maximumFractionDigits: 2 });
+  const fmtXlm = (n: number) =>
+    n.toLocaleString(undefined, { maximumFractionDigits: 2 });
   const raisedXlm = Number(stats.totalRaised) / 1e7;
   const goalXlm = Number(stats.goal) / 1e7;
   const progress = goalXlm > 0 ? Math.min(100, (raisedXlm / goalXlm) * 100) : 0;
   const deadline = new Date(Number(info.deadline) * 1000).toLocaleDateString();
   const isExpired = Number(info.deadline) * 1000 < Date.now();
 
-  const canWithdraw = info.status === "Successful" || (isExpired && raisedXlm >= goalXlm);
+  const canWithdraw =
+    info.status === "Successful" || (isExpired && raisedXlm >= goalXlm);
   const canCancel = info.status === "Active";
   const canPause = info.status === "Active";
   const canUnpause = info.status === "Paused";
   const canEdit = info.status === "Active";
-  const isPending = (action: string) => actionPending === `${contractId}:${action}`;
+  const isPending = (action: string) =>
+    actionPending === `${contractId}:${action}`;
 
   return (
     <div className="space-y-3 rounded-2xl border border-gray-800 bg-gray-900 p-5">
@@ -253,7 +281,9 @@ function DashboardCampaignCard({
             disabled={!!actionPending}
             className="flex items-center gap-1 rounded-lg bg-green-700 px-3 py-1.5 text-xs font-medium transition hover:bg-green-600 disabled:opacity-50"
           >
-            {isPending("withdraw") && <Loader2 size={12} className="animate-spin" />}
+            {isPending("withdraw") && (
+              <Loader2 size={12} className="animate-spin" />
+            )}
             Withdraw
           </button>
         )}
@@ -263,7 +293,9 @@ function DashboardCampaignCard({
             disabled={!!actionPending}
             className="flex items-center gap-1 rounded-lg bg-red-800 px-3 py-1.5 text-xs font-medium transition hover:bg-red-700 disabled:opacity-50"
           >
-            {isPending("cancel") && <Loader2 size={12} className="animate-spin" />}
+            {isPending("cancel") && (
+              <Loader2 size={12} className="animate-spin" />
+            )}
             Cancel
           </button>
         )}
@@ -273,7 +305,9 @@ function DashboardCampaignCard({
             disabled={!!actionPending}
             className="flex items-center gap-1 rounded-lg bg-slate-700 px-3 py-1.5 text-xs font-medium transition hover:bg-slate-600 disabled:opacity-50"
           >
-            {isPending("pause") && <Loader2 size={12} className="animate-spin" />}
+            {isPending("pause") && (
+              <Loader2 size={12} className="animate-spin" />
+            )}
             Pause
           </button>
         )}
@@ -283,13 +317,21 @@ function DashboardCampaignCard({
             disabled={!!actionPending}
             className="flex items-center gap-1 rounded-lg bg-indigo-700 px-3 py-1.5 text-xs font-medium transition hover:bg-indigo-600 disabled:opacity-50"
           >
-            {isPending("unpause") && <Loader2 size={12} className="animate-spin" />}
+            {isPending("unpause") && (
+              <Loader2 size={12} className="animate-spin" />
+            )}
             Resume
           </button>
         )}
         {canEdit && (
           <button
-            onClick={() => onEdit({ contractId, title: info.title, description: info.description })}
+            onClick={() =>
+              onEdit({
+                contractId,
+                title: info.title,
+                description: info.description,
+              })
+            }
             disabled={!!actionPending}
             className="rounded-lg bg-gray-700 px-3 py-1.5 text-xs font-medium transition hover:bg-gray-600 disabled:opacity-50"
           >
@@ -298,7 +340,12 @@ function DashboardCampaignCard({
         )}
         {canEdit && (
           <button
-            onClick={() => onExtend(contractId, new Date(Number(info.deadline) * 1000).toISOString())}
+            onClick={() =>
+              onExtend(
+                contractId,
+                new Date(Number(info.deadline) * 1000).toISOString(),
+              )
+            }
             disabled={!!actionPending}
             className="rounded-lg bg-gray-700 px-3 py-1.5 text-xs font-medium transition hover:bg-gray-600 disabled:opacity-50"
           >
@@ -341,7 +388,9 @@ function ContributedCampaignCard({ contractId }: { contractId: string }) {
       onClick={() => router.push(`/campaigns/${contractId}`)}
       role="link"
       tabIndex={0}
-      onKeyDown={(e) => e.key === "Enter" && router.push(`/campaigns/${contractId}`)}
+      onKeyDown={(e) =>
+        e.key === "Enter" && router.push(`/campaigns/${contractId}`)
+      }
       aria-label={`View campaign: ${info.title}`}
     >
       <div className="flex items-start justify-between gap-2">
@@ -350,8 +399,14 @@ function ContributedCampaignCard({ contractId }: { contractId: string }) {
       </div>
       <ProgressBar progress={progress} />
       <div className="flex justify-between text-sm text-gray-400">
-        <span>{raisedXlm.toLocaleString(undefined, { maximumFractionDigits: 2 })} XLM raised</span>
-        <span>Goal: {goalXlm.toLocaleString(undefined, { maximumFractionDigits: 2 })} XLM</span>
+        <span>
+          {raisedXlm.toLocaleString(undefined, { maximumFractionDigits: 2 })}{" "}
+          XLM raised
+        </span>
+        <span>
+          Goal:{" "}
+          {goalXlm.toLocaleString(undefined, { maximumFractionDigits: 2 })} XLM
+        </span>
       </div>
       <p className="truncate font-mono text-xs text-gray-600">{contractId}</p>
     </div>
@@ -366,7 +421,10 @@ function DashboardStats({
   contributedIds: string[];
 }) {
   return (
-    <div className="grid grid-cols-1 gap-4 sm:grid-cols-3 mb-8" data-testid="dashboard-stats">
+    <div
+      className="grid grid-cols-1 gap-4 sm:grid-cols-3 mb-8"
+      data-testid="dashboard-stats"
+    >
       <div className="rounded-2xl border border-gray-800 bg-gray-900 p-5 flex items-center gap-4">
         <div className="rounded-xl bg-indigo-900/50 p-3">
           <TrendingUp size={20} className="text-indigo-400" />
@@ -390,7 +448,9 @@ function DashboardStats({
           <Users size={20} className="text-purple-400" />
         </div>
         <div>
-          <p className="text-2xl font-bold">{createdIds.length + contributedIds.length}</p>
+          <p className="text-2xl font-bold">
+            {createdIds.length + contributedIds.length}
+          </p>
           <p className="text-xs text-gray-500 mt-0.5">Total Campaigns</p>
         </div>
       </div>
@@ -409,11 +469,47 @@ export default function DashboardPage() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [actionPending, setActionPending] = useState<string | null>(null);
   const [editTarget, setEditTarget] = useState<EditableCampaign | null>(null);
-  const [extendTarget, setExtendTarget] = useState<{ contractId: string; currentDeadline: string } | null>(null);
-  const [cancelTarget, setCancelTarget] = useState<{ contractId: string; title: string } | null>(null);
-  const [postUpdateTarget, setPostUpdateTarget] = useState<{ contractId: string; title: string } | null>(null);
+  const [extendTarget, setExtendTarget] = useState<{
+    contractId: string;
+    currentDeadline: string;
+  } | null>(null);
+  const [cancelTarget, setCancelTarget] = useState<{
+    contractId: string;
+    title: string;
+  } | null>(null);
+  const [postUpdateTarget, setPostUpdateTarget] = useState<{
+    contractId: string;
+    title: string;
+  } | null>(null);
   const [refreshNonce, setRefreshNonce] = useState(0);
-  const [dashboardCampaigns, setDashboardCampaigns] = useState<Campaign[]>([]);
+
+  const dashboardCampaignQueries = useQueries({
+    queries: contractIds.map((contractId) => ({
+      queryKey: QUERY_KEYS.campaign(contractId),
+      queryFn: () => fetchCampaignView(contractId),
+      enabled: isValidContractId(contractId),
+      retry: false,
+    })),
+  });
+  const dashboardCampaigns: Campaign[] = contractIds
+    .map((contractId, i): Campaign | null => {
+      const data = dashboardCampaignQueries[i]?.data;
+      if (!data) return null;
+      const { info, stats } = data;
+      return {
+        id: contractId,
+        contractId,
+        title: info.title,
+        description: info.description,
+        creator: info.creator,
+        raised: Number(stats.totalRaised) / 1e7,
+        goal: Number(stats.goal) / 1e7,
+        deadline: new Date(Number(info.deadline) * 1000).toISOString(),
+        status: info.status,
+        token: info.token,
+      };
+    })
+    .filter((campaign): campaign is Campaign => campaign !== null);
 
   const loadCampaignIds = useCallback((walletAddress: string) => {
     setLoading(true);
@@ -462,7 +558,10 @@ export default function DashboardPage() {
     }
   };
 
-  const handlePauseToggle = async (contractId: string, currentlyPaused: boolean) => {
+  const handlePauseToggle = async (
+    contractId: string,
+    currentlyPaused: boolean,
+  ) => {
     const action = currentlyPaused ? "unpause" : "pause";
 
     let reason: string | undefined;
@@ -534,17 +633,34 @@ export default function DashboardPage() {
             </button>
           </div>
 
+          {loadError && (
+            <p className="mb-6 text-sm text-red-400" role="alert">
+              {loadError}
+            </p>
+          )}
+
           {/* Statistics */}
           {(contractIds.length > 0 || contributedIds.length > 0) && (
-            <DashboardStats createdIds={contractIds} contributedIds={contributedIds} />
+            <DashboardStats
+              createdIds={contractIds}
+              contributedIds={contributedIds}
+            />
           )}
 
           {/* Next Actions Panel */}
-          {dashboardCampaigns.length > 0 && <NextActionsPanel campaigns={dashboardCampaigns} />}
+          {dashboardCampaigns.length > 0 && (
+            <NextActionsPanel campaigns={dashboardCampaigns} />
+          )}
 
           {/* Created campaigns */}
-          <section aria-labelledby="created-campaigns-heading" className="mb-10">
-            <h2 id="created-campaigns-heading" className="text-xl font-semibold mb-4">
+          <section
+            aria-labelledby="created-campaigns-heading"
+            className="mb-10"
+          >
+            <h2
+              id="created-campaigns-heading"
+              className="text-xl font-semibold mb-4"
+            >
               My Campaigns
             </h2>
 
@@ -553,7 +669,10 @@ export default function DashboardPage() {
                 illustration={<NoDashboardCampaignsIllustration />}
                 title="No campaigns yet"
                 description="You haven't created any campaigns. Launch your first one and start raising funds on Stellar."
-                action={{ label: "Create Campaign", onClick: () => router.push("/create") }}
+                action={{
+                  label: "Create Campaign",
+                  onClick: () => router.push("/create"),
+                }}
               />
             )}
 
@@ -563,12 +682,23 @@ export default function DashboardPage() {
                   key={contractId}
                   contractId={contractId}
                   onAction={handleAction}
-                  onCancel={(id, title) => setCancelTarget({ contractId: id, title })}
+                  onCancel={(id, title) =>
+                    setCancelTarget({ contractId: id, title })
+                  }
                   onPauseToggle={handlePauseToggle}
                   onEdit={setEditTarget}
-                  onExtend={(id, deadline) => setExtendTarget({ contractId: id, currentDeadline: deadline })}
-                  onPostUpdate={(id, title) => setPostUpdateTarget({ contractId: id, title })}
-                  postUpdateDisabled={postUpdateTarget?.contractId === contractId}
+                  onExtend={(id, deadline) =>
+                    setExtendTarget({
+                      contractId: id,
+                      currentDeadline: deadline,
+                    })
+                  }
+                  onPostUpdate={(id, title) =>
+                    setPostUpdateTarget({ contractId: id, title })
+                  }
+                  postUpdateDisabled={
+                    postUpdateTarget?.contractId === contractId
+                  }
                   actionPending={actionPending}
                   refreshNonce={refreshNonce}
                 />
@@ -578,7 +708,10 @@ export default function DashboardPage() {
 
           {/* Contributed campaigns */}
           <section aria-labelledby="contributed-campaigns-heading">
-            <h2 id="contributed-campaigns-heading" className="text-xl font-semibold mb-4">
+            <h2
+              id="contributed-campaigns-heading"
+              className="text-xl font-semibold mb-4"
+            >
               Campaigns I&apos;ve Backed
             </h2>
 
@@ -596,7 +729,10 @@ export default function DashboardPage() {
 
             <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
               {contributedIds.map((contractId) => (
-                <ContributedCampaignCard key={contractId} contractId={contractId} />
+                <ContributedCampaignCard
+                  key={contractId}
+                  contractId={contractId}
+                />
               ))}
             </div>
           </section>

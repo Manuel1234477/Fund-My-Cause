@@ -3,7 +3,7 @@
 import React, { useState } from "react";
 import { use } from "react";
 import { Navbar } from "@/components/layout/Navbar";
-import { useWallet } from "@/context/WalletContext";
+import { useWallet } from "@/hooks/useWallet";
 import { readProfile, writeProfile } from "@/lib/profileStore";
 import { ProfileHeader } from "@/components/profile/ProfileHeader";
 import { StatsBar } from "@/components/profile/StatsBar";
@@ -103,7 +103,10 @@ export default function ProfilePage({
           />
 
           {/* Campaigns created */}
-          <CampaignsSection address={address} />
+          <CampaignsSection
+            address={address}
+            onCampaignsLoaded={setCreatorCampaigns}
+          />
 
           {/* Contribution history */}
           <ContributionsSection address={address} />

@@ -8,6 +8,8 @@ import type { CampaignData } from "@/lib/soroban";
 
 interface CampaignsSectionProps {
   address: string;
+  /** Called with the creator's campaigns once fetched, so parents can derive stats. */
+  onCampaignsLoaded?: (campaigns: CampaignData[]) => void;
 }
 
 function CampaignCardRow({ campaign }: { campaign: CampaignData }) {
@@ -53,7 +55,10 @@ function CampaignCardRow({ campaign }: { campaign: CampaignData }) {
 /**
  * Fetches all campaigns and filters by creator address.
  */
-export function CampaignsSection({ address }: CampaignsSectionProps) {
+export function CampaignsSection({
+  address,
+  onCampaignsLoaded,
+}: CampaignsSectionProps) {
   const [campaigns, setCampaigns] = useState<CampaignData[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -67,7 +72,9 @@ export function CampaignsSection({ address }: CampaignsSectionProps) {
     fetchAllCampaigns()
       .then((all) => {
         if (!cancelled) {
-          setCampaigns(all.filter((c) => c.creator === address));
+          const creatorCampaigns = all.filter((c) => c.creator === address);
+          setCampaigns(creatorCampaigns);
+          onCampaignsLoaded?.(creatorCampaigns);
         }
       })
       .catch(() => {
@@ -77,7 +84,10 @@ export function CampaignsSection({ address }: CampaignsSectionProps) {
         if (!cancelled) setLoading(false);
       });
 
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [address]);
 
   return (
