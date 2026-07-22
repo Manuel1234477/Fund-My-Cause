@@ -1,12 +1,27 @@
 import { GraphQLError } from "graphql";
 import type { IResolvers } from "@graphql-tools/utils";
+import { CAMPAIGN_STATUS_VALUES, type CampaignStatus } from "@fund-my-cause/types";
 import type { Context } from "./types.js";
 import { CacheService } from "./services/cache.js";
 import { ContractService } from "./services/contract.js";
 import { DataLoaderService } from "./services/dataloader.js";
 import { PubSubService } from "./services/pubsub.js";
 
+/**
+ * Maps the public GraphQL schema's SCREAMING_CASE enum names (schema.ts)
+ * to the canonical internal CampaignStatus values from @fund-my-cause/types
+ * (PascalCase, matching the crowdfund contract). Derived programmatically
+ * so a new status added to the shared package is picked up automatically
+ * instead of silently drifting out of sync — this is the contract test
+ * that guards against the bug this resolver map exists to fix.
+ */
+export const CAMPAIGN_STATUS_ENUM_MAP: Record<string, CampaignStatus> = Object.fromEntries(
+  CAMPAIGN_STATUS_VALUES.map((value) => [value.toUpperCase(), value])
+);
+
 export const resolvers: IResolvers<any, Context> = {
+  CampaignStatus: CAMPAIGN_STATUS_ENUM_MAP,
+
   // Custom scalar resolvers
   BigInt: {
     serialize(value: bigint | string | number) {
@@ -97,7 +112,7 @@ export const resolvers: IResolvers<any, Context> = {
     },
 
     async activeCampaigns(_, { limit = 20 }, context: Context) {
-      return context.dataLoader.campaignsByStatus.load({ status: "ACTIVE", limit });
+      return context.dataLoader.campaignsByStatus.load({ status: "Active", limit });
     },
 
     async trendingCampaigns(_, { limit = 10 }, context: Context) {

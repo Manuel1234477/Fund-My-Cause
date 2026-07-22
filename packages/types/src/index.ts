@@ -1,5 +1,7 @@
 export type { Campaign, FAQ, TeamMember, TrustSignalData } from "./campaign";
 
+export { CAMPAIGN_STATUS_VALUES } from "./soroban";
+
 export type {
   CampaignStatus,
   CampaignInfo,

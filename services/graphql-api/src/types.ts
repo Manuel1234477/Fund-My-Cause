@@ -1,6 +1,12 @@
 import type { RedisClientType } from "redis";
 import type DataLoader from "dataloader";
 import type { PubSub } from "graphql-subscriptions";
+// Canonical source: @fund-my-cause/types. Values are PascalCase ("Active",
+// not "ACTIVE"), matching the crowdfund contract's Status enum. The public
+// GraphQL schema still exposes SCREAMING_CASE enum names (see schema.ts) —
+// resolvers.ts's CAMPAIGN_STATUS_ENUM_MAP bridges the two.
+import type { CampaignStatus } from "@fund-my-cause/types";
+export type { CampaignStatus };
 
 // ── Contract types ─────────────────────────────────────────────────────────────
 
@@ -155,15 +161,6 @@ export interface Statistics {
   totalContributors: number;
   averageContribution: bigint;
   successRate: number;
-}
-
-export enum CampaignStatus {
-  ACTIVE = "ACTIVE",
-  SUCCESSFUL = "SUCCESSFUL",
-  REFUNDED = "REFUNDED",
-  CANCELLED = "CANCELLED",
-  PAUSED = "PAUSED",
-  ARCHIVED = "ARCHIVED",
 }
 
 export enum MilestoneStatus {

@@ -56,6 +56,7 @@ const STATUS_STYLES: Record<CampaignStatus, string> = {
   Refunded: "bg-yellow-900 text-yellow-300",
   Cancelled: "bg-red-900 text-red-300",
   Paused: "bg-slate-800 text-slate-300",
+  Archived: "bg-slate-800 text-slate-400",
 };
 
 const STATUS_ICONS: Record<CampaignStatus, string> = {
@@ -64,6 +65,7 @@ const STATUS_ICONS: Record<CampaignStatus, string> = {
   Refunded: "↩",
   Cancelled: "✗",
   Paused: "⏸",
+  Archived: "▫",
 };
 
 function StatusBadge({ status }: { status: CampaignStatus }) {
@@ -211,7 +213,7 @@ function DashboardCampaignCard({
   onPauseToggle,
   onEdit,
   onExtend,
-  refreshNonce,
+  refreshNonce: _refreshNonce,
 }: {
   contractId: string;
   actionPending: string | null;
@@ -455,7 +457,7 @@ export default function DashboardPage() {
   const [contractIds, setContractIds] = useState<string[]>([]);
   const [contributedIds, setContributedIds] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
-  const [loadError, setLoadError] = useState<string | null>(null);
+  const [, setLoadError] = useState<string | null>(null);
   const [actionPending, setActionPending] = useState<string | null>(null);
   const [editTarget, setEditTarget] = useState<EditableCampaign | null>(null);
   const [extendTarget, setExtendTarget] = useState<{
