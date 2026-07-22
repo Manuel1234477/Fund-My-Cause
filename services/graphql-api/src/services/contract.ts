@@ -1,4 +1,5 @@
 import { Keypair, Server, Networks, TransactionBuilder } from "@stellar/stellar-sdk";
+import { xlmToStroops } from "@fund-my-cause/sdk";
 import type {
   Campaign,
   Contribution,
@@ -37,13 +38,13 @@ export class ContractService {
         title: "Sample Campaign",
         description: "A sample campaign for testing",
         creator: "GXXX...",
-        goal: BigInt("10000000000"), // 1000 XLM (10^9 stroops)
-        raised: BigInt("5000000000"), // 500 XLM
+        goal: xlmToStroops(1000),
+        raised: xlmToStroops(500),
         deadline: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
-        status: "ACTIVE" as CampaignStatus,
+        status: "Active" as CampaignStatus,
         category: "Technology",
         image: "https://example.com/image.jpg",
-        minContribution: BigInt("1000000"), // 0.1 XLM
+        minContribution: xlmToStroops(0.1),
         totalContributors: 42,
         token: "native",
         platformFeeBps: 250, // 2.5%
@@ -75,13 +76,13 @@ export class ContractService {
           title: `Campaign ${index}`,
           description: `Description for campaign ${index}`,
           creator: `creator_${index}`,
-          goal: BigInt(10000000000 + index * 1000000000),
-          raised: BigInt(Math.floor(Math.random() * 5000000000)),
+          goal: xlmToStroops(1000 + index * 100),
+          raised: xlmToStroops(Math.random() * 500),
           deadline: new Date(Date.now() + (30 - index % 30) * 24 * 60 * 60 * 1000).toISOString(),
-          status: (["ACTIVE", "SUCCESSFUL", "PAUSED"][index % 3] as CampaignStatus),
+          status: (["Active", "Successful", "Paused"][index % 3] as CampaignStatus),
           category: ["Technology", "Healthcare", "Education"][index % 3],
           image: `https://example.com/image_${index}.jpg`,
-          minContribution: BigInt("1000000"),
+          minContribution: xlmToStroops(0.1),
           totalContributors: Math.floor(Math.random() * 100),
           token: "native",
           platformFeeBps: 250,
@@ -127,12 +128,12 @@ export class ContractService {
           title: `Trending Campaign ${i}`,
           description: `A trending campaign`,
           creator: `trending_creator_${i}`,
-          goal: BigInt("10000000000"),
-          raised: BigInt("8000000000"),
+          goal: xlmToStroops(1000),
+          raised: xlmToStroops(800),
           deadline: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString(),
-          status: "ACTIVE" as CampaignStatus,
+          status: "Active" as CampaignStatus,
           category: "Technology",
-          minContribution: BigInt("1000000"),
+          minContribution: xlmToStroops(0.1),
           totalContributors: Math.floor(Math.random() * 200) + 50,
           token: "native",
           platformFeeBps: 250,
@@ -163,12 +164,12 @@ export class ContractService {
           title: `${query} Campaign ${i}`,
           description: `A campaign matching: ${query}`,
           creator: `creator_search_${i}`,
-          goal: BigInt("10000000000"),
-          raised: BigInt(Math.floor(Math.random() * 5000000000)),
+          goal: xlmToStroops(1000),
+          raised: xlmToStroops(Math.random() * 500),
           deadline: new Date(Date.now() + 20 * 24 * 60 * 60 * 1000).toISOString(),
-          status: "ACTIVE" as CampaignStatus,
+          status: "Active" as CampaignStatus,
           category: "Technology",
-          minContribution: BigInt("1000000"),
+          minContribution: xlmToStroops(0.1),
           totalContributors: Math.floor(Math.random() * 100),
           token: "native",
           platformFeeBps: 250,
@@ -192,7 +193,7 @@ export class ContractService {
     try {
       const user: User = {
         address,
-        totalContributed: BigInt("50000000000"),
+        totalContributed: xlmToStroops(5000),
         contributionCount: 25,
         campaigns: [],
         contributions: [],
@@ -214,9 +215,9 @@ export class ContractService {
       return {
         totalCampaigns: 1000,
         activeCampaigns: 250,
-        totalRaised: BigInt("5000000000000"), // 500,000 XLM
+        totalRaised: xlmToStroops(500_000),
         totalContributors: 5000,
-        averageContribution: BigInt("1000000000"), // 100 XLM
+        averageContribution: xlmToStroops(100),
         successRate: 72.5,
       };
     } catch (error) {
@@ -264,7 +265,7 @@ export class ContractService {
         goal: input.goal,
         raised: BigInt(0),
         deadline: input.deadline,
-        status: "ACTIVE" as CampaignStatus,
+        status: "Active" as CampaignStatus,
         category: input.category,
         image: input.image,
         videoUrl: input.videoUrl,

@@ -165,7 +165,7 @@ export function createDataLoaders(contractService: ContractService): DataLoaders
             goal: BigInt("10000000000"),
             raised: BigInt(Math.floor(Math.random() * 5000000000)),
             deadline: new Date(Date.now() + 20 * 24 * 60 * 60 * 1000).toISOString(),
-            status: "ACTIVE" as any,
+            status: "Active",
             category: "Technology",
             minContribution: BigInt("1000000"),
             totalContributors: Math.floor(Math.random() * 50),

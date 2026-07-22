@@ -9,7 +9,7 @@ import { createRedisClient } from "./redis.js";
 import { CacheService } from "./services/cache.js";
 import { ContractService } from "./services/contract.js";
 import { createDataLoaders } from "./services/dataloader.js";
-import { getPubSub } } from "./services/pubsub.js";
+import { getPubSub } from "./services/pubsub.js";
 import { AuthService } from "./services/auth.js";
 import { RateLimiterService } from "./services/rate-limiter.js";
 import { typeDefs } from "./schema.js";

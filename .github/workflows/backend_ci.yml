@@ -11,6 +11,8 @@ on:
       - 'services/indexer/**'
       - 'services/graphql-api/**'
       - 'services/monitoring-service/**'
+      - 'packages/types/**'
+      - 'sdks/js/**'
       - '.github/workflows/backend_ci.yml'
   pull_request:
     branches: [main, develop]
@@ -18,6 +20,8 @@ on:
       - 'services/indexer/**'
       - 'services/graphql-api/**'
       - 'services/monitoring-service/**'
+      - 'packages/types/**'
+      - 'sdks/js/**'
       - '.github/workflows/backend_ci.yml'
 
 env:
@@ -49,9 +53,27 @@ jobs:
           key: ${{ runner.os }}-node${{ env.NODE_VERSION }}-graphql-api-${{ hashFiles('services/graphql-api/package-lock.json') }}
           restore-keys: ${{ runner.os }}-node${{ env.NODE_VERSION }}-graphql-api-
 
+      - name: Cache node_modules (sdks/js)
+        uses: actions/cache@v4
+        with:
+          path: sdks/js/node_modules
+          key: ${{ runner.os }}-node${{ env.NODE_VERSION }}-sdk-${{ hashFiles('sdks/js/package-lock.json') }}
+          restore-keys: ${{ runner.os }}-node${{ env.NODE_VERSION }}-sdk-
+
       - name: Install (indexer)
         working-directory: services/indexer
         run: npm ci
+
+      # graphql-api depends on @fund-my-cause/sdk (file:../../sdks/js), whose
+      # package.json "exports" point at a built dist/ — build it before
+      # graphql-api's own install/typecheck/lint can resolve it.
+      - name: Install (sdks/js)
+        working-directory: sdks/js
+        run: npm ci
+
+      - name: Build (sdks/js)
+        working-directory: sdks/js
+        run: npm run build
 
       - name: Install (graphql-api)
         working-directory: services/graphql-api
@@ -90,9 +112,24 @@ jobs:
           key: ${{ runner.os }}-node${{ env.NODE_VERSION }}-graphql-api-${{ hashFiles('services/graphql-api/package-lock.json') }}
           restore-keys: ${{ runner.os }}-node${{ env.NODE_VERSION }}-graphql-api-
 
+      - name: Cache node_modules (sdks/js)
+        uses: actions/cache@v4
+        with:
+          path: sdks/js/node_modules
+          key: ${{ runner.os }}-node${{ env.NODE_VERSION }}-sdk-${{ hashFiles('sdks/js/package-lock.json') }}
+          restore-keys: ${{ runner.os }}-node${{ env.NODE_VERSION }}-sdk-
+
       - name: Install (indexer)
         working-directory: services/indexer
         run: npm ci
+
+      - name: Install (sdks/js)
+        working-directory: sdks/js
+        run: npm ci
+
+      - name: Build (sdks/js)
+        working-directory: sdks/js
+        run: npm run build
 
       - name: Install (graphql-api)
         working-directory: services/graphql-api
@@ -124,12 +161,42 @@ jobs:
           key: ${{ runner.os }}-node${{ env.NODE_VERSION }}-indexer-${{ hashFiles('services/indexer/package-lock.json') }}
           restore-keys: ${{ runner.os }}-node${{ env.NODE_VERSION }}-indexer-
 
+      - name: Cache node_modules (graphql-api)
+        uses: actions/cache@v4
+        with:
+          path: services/graphql-api/node_modules
+          key: ${{ runner.os }}-node${{ env.NODE_VERSION }}-graphql-api-${{ hashFiles('services/graphql-api/package-lock.json') }}
+          restore-keys: ${{ runner.os }}-node${{ env.NODE_VERSION }}-graphql-api-
+
+      - name: Cache node_modules (sdks/js)
+        uses: actions/cache@v4
+        with:
+          path: sdks/js/node_modules
+          key: ${{ runner.os }}-node${{ env.NODE_VERSION }}-sdk-${{ hashFiles('sdks/js/package-lock.json') }}
+          restore-keys: ${{ runner.os }}-node${{ env.NODE_VERSION }}-sdk-
+
       - name: Install (indexer)
         working-directory: services/indexer
         run: npm ci
 
       - name: Run unit tests (indexer)
         working-directory: services/indexer
+        run: npm test
+
+      - name: Install (sdks/js)
+        working-directory: sdks/js
+        run: npm ci
+
+      - name: Build (sdks/js)
+        working-directory: sdks/js
+        run: npm run build
+
+      - name: Install (graphql-api)
+        working-directory: services/graphql-api
+        run: npm ci
+
+      - name: Run unit tests (graphql-api)
+        working-directory: services/graphql-api
         run: npm test
 
   # ── Integration tests (with Postgres service container) ───────────────────────
