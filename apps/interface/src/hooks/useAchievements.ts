@@ -108,8 +108,8 @@ const ACHIEVEMENT_DEFINITIONS = {
 async function fetchUserAchievements(
   userAddress: string
 ): Promise<Achievement[]> {
-  // TODO: Replace with actual API call
-  // For now, return mock data
+  // Mocked pending Issue #12 (achievements contract: unlock conditions are
+  // still TODO'd on-chain). Replace with a real contract/API read once #12 lands.
   const achievements: Achievement[] = [
     {
       id: "ach_1",
@@ -143,8 +143,8 @@ async function fetchUserAchievements(
 async function fetchAchievementProgress(
   userAddress: string
 ): Promise<AchievementProgress[]> {
-  // TODO: Replace with actual API call
-  // For now, return mock data
+  // Mocked pending Issue #12 (achievements contract: stub leaderboard ranking,
+  // unlock conditions unresolved). Replace with a real contract/API read once #12 lands.
   const progress: AchievementProgress[] = [
     {
       type: "mega_donor",
@@ -187,7 +187,8 @@ async function fetchAchievementProgress(
 async function fetchGamificationProfile(
   userAddress: string
 ): Promise<GamificationProfile> {
-  // TODO: Replace with actual API call
+  // Mocked pending Issue #12 (achievements contract not yet finished).
+  // Replace with a real contract/API read once #12 lands.
   const profile: GamificationProfile = {
     address: userAddress,
     achievements: [],
@@ -262,7 +263,8 @@ export function useAchievements({
     }: {
       achievementType: AchievementType;
     }): Promise<AchievementUnlockedEvent> => {
-      // TODO: Call API to unlock achievement
+      // Mocked pending Issue #12 (achievements contract's unlock_achievement()
+      // entrypoint is unfinished). Replace with a real contract call once #12 lands.
       return {
         achievement: {
           id: `ach_${achievementType}`,
@@ -301,7 +303,8 @@ export function useAchievements({
       achievementId: string;
       platform: string;
     }): Promise<void> => {
-      // TODO: Call API to track share
+      // Mocked pending Issue #12 (no share-tracking entrypoint on the
+      // achievements contract yet). Replace with a real API/contract call once #12 lands.
     },
   });
 
