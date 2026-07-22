@@ -20,6 +20,7 @@ const PORT = process.env.GRAPHQL_PORT ? parseInt(process.env.GRAPHQL_PORT) : 400
 const NODE_ENV = process.env.NODE_ENV || "development";
 const RPC_URL = process.env.RPC_URL || "https://soroban-testnet.stellar.org";
 const CONTRACT_NETWORK = process.env.CONTRACT_NETWORK || "testnet";
+const REGISTRY_CONTRACT_ID = process.env.REGISTRY_CONTRACT_ID || "";
 const JWT_SECRET = process.env.JWT_SECRET || "your-secret-key-change-in-production";
 
 /**
@@ -37,7 +38,14 @@ async function startServer() {
 
     // Initialize services
     const cacheService = new CacheService(redis);
-    const contractService = new ContractService(RPC_URL, CONTRACT_NETWORK as "testnet" | "mainnet");
+    const contractService = new ContractService({
+      rpcUrl: RPC_URL,
+      networkPassphrase:
+        CONTRACT_NETWORK === "mainnet"
+          ? "Public Global Stellar Network ; September 2015"
+          : "Test SDF Network ; September 2015",
+      registryContractId: REGISTRY_CONTRACT_ID || undefined,
+    });
     const dataLoaders = createDataLoaders(contractService);
     const pubsub = getPubSub();
     const authService = new AuthService(JWT_SECRET);

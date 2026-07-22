@@ -10,7 +10,7 @@ jest.mock("@/hooks/useCampaign", () => ({
   useCampaign: jest.fn(),
 }));
 
-jest.mock("@/context/WalletContext", () => ({
+jest.mock("@/hooks/useWallet", () => ({
   useWallet: () => ({ address: null }),
 }));
 

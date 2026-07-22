@@ -1,18 +1,18 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import { useWallet } from "@/context/WalletContext";
+import { useWallet } from "@/hooks/useWallet";
 import { PledgeModal } from "@/components/ui/PledgeModal";
 import { TransactionStatus, TxStatus } from "@/components/ui/TransactionStatus";
-import { withdraw, refundSingle, getCampaignStats, pauseCampaign, unpauseCampaign } from "@/lib/contract";
 import {
-  fetchContribution,
-  buildWithdrawTx,
-  simulateTx,
-  submitSignedTx,
-  buildRefundTx,
-  type CampaignStatus 
-} from "@/lib/soroban";import { useNotifications } from "@/context/NotificationContext";
+  withdraw,
+  refundSingle,
+  getCampaignStats,
+  pauseCampaign,
+  unpauseCampaign,
+} from "@/lib/contract";
+import { fetchContribution, type CampaignStatus } from "@/lib/soroban";
+import { useNotifications } from "@/hooks/useNotifications";
 
 interface Props {
   contractId: string;
@@ -30,8 +30,6 @@ interface Props {
   /** Called on tx failure to roll back optimistic update */
   onRollbackOptimistic?: () => void;
 }
-
-type ActionStatus = "idle" | "simulating" | "signing" | "submitting" | "done" | "error";
 
 export function CampaignActions({
   contractId,
@@ -70,7 +68,8 @@ export function CampaignActions({
   // Show withdraw only to creator when deadline passed and goal met (or already Successful)
   const canWithdraw =
     isCreator &&
-    (campaignStatus === "Successful" || (deadlinePassed && goalMet && campaignStatus === "Active"));
+    (campaignStatus === "Successful" ||
+      (deadlinePassed && goalMet && campaignStatus === "Active"));
   const canRefund =
     !!address &&
     userContribution > 0 &&
@@ -126,6 +125,54 @@ export function CampaignActions({
       setUserContribution(0);
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Refund failed.";
+      setTxError(msg);
+      setTxStatus("error");
+    } finally {
+      setPendingTx(false);
+    }
+  }
+
+  async function handlePause() {
+    if (!address || pendingTx) return;
+    setPendingTx(true);
+    setTxError("");
+    setTxStatus("signing");
+    try {
+      const hash = await pauseCampaign(contractId, address, async (xdr) => {
+        const signed = await signTx(xdr);
+        setTxStatus("submitting");
+        return signed;
+      });
+      setTxStatus("confirming");
+      setTxHash(hash);
+      setTxStatus("success");
+      setCampaignStatus("Paused");
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Pause failed.";
+      setTxError(msg);
+      setTxStatus("error");
+    } finally {
+      setPendingTx(false);
+    }
+  }
+
+  async function handleUnpause() {
+    if (!address || pendingTx) return;
+    setPendingTx(true);
+    setTxError("");
+    setTxStatus("signing");
+    try {
+      const hash = await unpauseCampaign(contractId, address, async (xdr) => {
+        const signed = await signTx(xdr);
+        setTxStatus("submitting");
+        return signed;
+      });
+      setTxStatus("confirming");
+      setTxHash(hash);
+      setTxStatus("success");
+      setCampaignStatus("Active");
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Resume failed.";
       setTxError(msg);
       setTxStatus("error");
     } finally {
@@ -190,18 +237,26 @@ export function CampaignActions({
         )}
 
         {/* Success message after withdraw */}
-        {txStatus === "success" && txHash && campaignStatus === "Successful" && raised > 0 && (
-          <p className="text-green-400 text-sm text-center">
-            Funds withdrawn successfully — {raised.toLocaleString()} XLM sent to your wallet.
-          </p>
-        )}
+        {txStatus === "success" &&
+          txHash &&
+          campaignStatus === "Successful" &&
+          raised > 0 && (
+            <p className="text-green-400 text-sm text-center">
+              Funds withdrawn successfully — {raised.toLocaleString()} XLM sent
+              to your wallet.
+            </p>
+          )}
 
         {/* Pledge — visible while campaign is active */}
         {campaignStatus === "Active" && !deadlinePassed && (
           <button
             onClick={() => (address ? setPledging(true) : connect())}
             disabled={networkMismatch || isProcessing}
-            aria-label={address ? `Pledge to ${campaignTitle}` : "Connect wallet to pledge"}
+            aria-label={
+              address
+                ? `Pledge to ${campaignTitle}`
+                : "Connect wallet to pledge"
+            }
             className="w-full py-3 rounded-xl font-medium bg-indigo-600 hover:bg-indigo-500 transition text-white disabled:opacity-50"
           >
             {address ? "Pledge Now" : "Connect Wallet to Pledge"}
@@ -269,7 +324,8 @@ export function CampaignActions({
         {/* Paused notice for non-admin */}
         {!isCreator && campaignStatus === "Paused" && (
           <p className="text-center text-sm text-orange-500 py-2">
-            This campaign is currently paused. Contributions are temporarily disabled.
+            This campaign is currently paused. Contributions are temporarily
+            disabled.
           </p>
         )}
       </div>

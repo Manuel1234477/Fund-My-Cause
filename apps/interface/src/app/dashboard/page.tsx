@@ -2,6 +2,7 @@
 
 import React, { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useQueries } from "@tanstack/react-query";
 import { Loader2, PlusCircle, TrendingUp, Users, Wallet } from "lucide-react";
 import { Navbar } from "@/components/layout/Navbar";
 import { ProgressBar } from "@/components/ui/ProgressBar";
@@ -14,8 +15,8 @@ import { DeadlineExtensionModal } from "@/components/ui/DeadlineExtensionModal";
 import { CancelCampaignModal } from "@/components/ui/CancelCampaignModal";
 import { NextActionsPanel } from "@/components/ui/NextActionsPanel";
 import { PostUpdateModal } from "@/components/ui/PostUpdateModal";
-import { useWallet } from "@/context/WalletContext";
-import { useNotifications } from "@/context/NotificationContext";
+import { useWallet } from "@/hooks/useWallet";
+import { useNotifications } from "@/hooks/useNotifications";
 import { useCampaign } from "@/hooks/useCampaign";
 import type { CampaignStatus } from "@/types/soroban";
 import type { Campaign } from "@/types/campaign";
@@ -26,7 +27,10 @@ import {
   buildUnpauseTx,
   buildUpdateMetadataTx,
   submitSignedTx,
+  fetchCampaignView,
 } from "@/lib/soroban";
+import { isValidContractId } from "@/lib/validation";
+import { QUERY_KEYS } from "@/lib/queryKeys";
 
 const REGISTRY_KEY = "fmc:campaigns";
 const CONTRIBUTIONS_KEY = "fmc:contributions";
@@ -227,7 +231,11 @@ function DashboardCampaignCard({
   postUpdateDisabled: boolean;
   refreshNonce: number;
 }) {
-  const { info, stats, loading } = useCampaign(contractId);
+  const { info, stats, loading, refresh } = useCampaign(contractId);
+
+  useEffect(() => {
+    if (refreshNonce > 0) refresh();
+  }, [refreshNonce, refresh]);
 
   if (loading || !info || !stats) {
     return (
@@ -475,7 +483,34 @@ export default function DashboardPage() {
     title: string;
   } | null>(null);
   const [refreshNonce, setRefreshNonce] = useState(0);
-  const [dashboardCampaigns] = useState<Campaign[]>([]);
+
+  const dashboardCampaignQueries = useQueries({
+    queries: contractIds.map((contractId) => ({
+      queryKey: QUERY_KEYS.campaign(contractId),
+      queryFn: () => fetchCampaignView(contractId),
+      enabled: isValidContractId(contractId),
+      retry: false,
+    })),
+  });
+  const dashboardCampaigns: Campaign[] = contractIds
+    .map((contractId, i): Campaign | null => {
+      const data = dashboardCampaignQueries[i]?.data;
+      if (!data) return null;
+      const { info, stats } = data;
+      return {
+        id: contractId,
+        contractId,
+        title: info.title,
+        description: info.description,
+        creator: info.creator,
+        raised: Number(stats.totalRaised) / 1e7,
+        goal: Number(stats.goal) / 1e7,
+        deadline: new Date(Number(info.deadline) * 1000).toISOString(),
+        status: info.status,
+        token: info.token,
+      };
+    })
+    .filter((campaign): campaign is Campaign => campaign !== null);
 
   const loadCampaignIds = useCallback((walletAddress: string) => {
     setLoading(true);
@@ -598,6 +633,12 @@ export default function DashboardPage() {
               <PlusCircle size={16} /> New Campaign
             </button>
           </div>
+
+          {loadError && (
+            <p className="mb-6 text-sm text-red-400" role="alert">
+              {loadError}
+            </p>
+          )}
 
           {/* Statistics */}
           {(contractIds.length > 0 || contributedIds.length > 0) && (

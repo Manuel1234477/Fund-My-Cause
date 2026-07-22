@@ -6,11 +6,11 @@ import { CampaignActions } from "./CampaignActions";
 
 // ── Mocks ─────────────────────────────────────────────────────────────────────
 
-jest.mock("@/context/WalletContext", () => ({
+jest.mock("@/hooks/useWallet", () => ({
   useWallet: jest.fn(),
 }));
 
-jest.mock("@/context/NotificationContext", () => ({
+jest.mock("@/hooks/useNotifications", () => ({
   useNotifications: () => ({ addNotification: jest.fn() }),
 }));
 
@@ -46,8 +46,8 @@ jest.mock("@/components/ui/TransactionStatus", () => ({
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-const { useWallet } = jest.requireMock("@/context/WalletContext");
-const { withdraw, refundSingle } = jest.requireMock("@/lib/contract");
+const { useWallet } = jest.requireMock("@/hooks/useWallet");
+const { withdraw } = jest.requireMock("@/lib/contract");
 const { fetchContribution } = jest.requireMock("@/lib/soroban");
 
 const baseProps = {
@@ -80,7 +80,12 @@ describe("CampaignActions", () => {
 
   it("calls connect when unauthenticated user clicks pledge", () => {
     const connect = jest.fn();
-    useWallet.mockReturnValue({ address: null, connect, signTx: jest.fn(), networkMismatch: false });
+    useWallet.mockReturnValue({
+      address: null,
+      connect,
+      signTx: jest.fn(),
+      networkMismatch: false,
+    });
 
     render(<CampaignActions {...baseProps} />);
     fireEvent.click(screen.getByText("Connect Wallet to Pledge"));
@@ -135,11 +140,7 @@ describe("CampaignActions", () => {
     });
 
     render(
-      <CampaignActions
-        {...baseProps}
-        deadlinePassed={true}
-        goalMet={true}
-      />
+      <CampaignActions {...baseProps} deadlinePassed={true} goalMet={true} />,
     );
     expect(screen.getByText("Withdraw Funds")).toBeInTheDocument();
   });
@@ -154,11 +155,7 @@ describe("CampaignActions", () => {
     });
 
     render(
-      <CampaignActions
-        {...baseProps}
-        deadlinePassed={true}
-        goalMet={false}
-      />
+      <CampaignActions {...baseProps} deadlinePassed={true} goalMet={false} />,
     );
 
     await waitFor(() => {
@@ -212,7 +209,7 @@ describe("CampaignActions", () => {
 
     render(<CampaignActions {...baseProps} status="Paused" />);
     expect(
-      screen.getByText(/This campaign is currently paused/)
+      screen.getByText(/This campaign is currently paused/),
     ).toBeInTheDocument();
   });
 
@@ -227,11 +224,7 @@ describe("CampaignActions", () => {
     });
 
     render(
-      <CampaignActions
-        {...baseProps}
-        deadlinePassed={true}
-        goalMet={true}
-      />
+      <CampaignActions {...baseProps} deadlinePassed={true} goalMet={true} />,
     );
 
     fireEvent.click(screen.getByText("Withdraw Funds"));

@@ -12,8 +12,8 @@ import {
 } from "@/components/ui/EmptyState";
 import { DeadlineExtensionModal } from "@/components/ui/DeadlineExtensionModal";
 import { CancelCampaignModal } from "@/components/ui/CancelCampaignModal";
-import { useWallet } from "@/context/WalletContext";
-import { useNotifications } from "@/context/NotificationContext";
+import { useWallet } from "@/hooks/useWallet";
+import { useNotifications } from "@/hooks/useNotifications";
 import { useCampaign } from "@/hooks/useCampaign";
 import type { CampaignStatus } from "@/types/soroban";
 import {
@@ -230,7 +230,11 @@ function DashboardCampaignCard({
   onExtend: (contractId: string, currentDeadline: string) => void;
   refreshNonce: number;
 }) {
-  const { info, stats, loading } = useCampaign(contractId);
+  const { info, stats, loading, refresh } = useCampaign(contractId);
+
+  useEffect(() => {
+    if (refreshNonce > 0) refresh();
+  }, [refreshNonce, refresh]);
 
   if (loading || !info || !stats) {
     return (
@@ -587,6 +591,12 @@ export default function DashboardPage() {
               <PlusCircle size={16} /> New Campaign
             </button>
           </div>
+
+          {loadError && (
+            <p className="mb-6 text-sm text-red-400" role="alert">
+              {loadError}
+            </p>
+          )}
 
           {/* Statistics */}
           {(contractIds.length > 0 || contributedIds.length > 0) && (

@@ -9,14 +9,12 @@ const config: Config = {
     "^@/i18n/(.*)$": "<rootDir>/src/__mocks__/i18n/$1",
     "^next-intl$": "<rootDir>/src/__mocks__/next-intl.ts",
     "^next-intl/(.*)$": "<rootDir>/src/__mocks__/next-intl/$1.ts",
-    "^@/context/ThemeContext$": "<rootDir>/src/__mocks__/context/ThemeContext.ts",
+    "^@/hooks/useTheme$": "<rootDir>/src/__mocks__/hooks/useTheme.ts",
     "^@/(.*)$": "<rootDir>/src/$1",
   },
   setupFiles: ["<rootDir>/jest.polyfills.ts"],
   setupFilesAfterEnv: ["<rootDir>/jest.setup.ts"],
-  transformIgnorePatterns: [
-    "node_modules/(?!(@walletconnect|uint8arrays)/)"
-  ],
+  transformIgnorePatterns: ["node_modules/(?!(@walletconnect|uint8arrays)/)"],
 };
 
 export default config;
