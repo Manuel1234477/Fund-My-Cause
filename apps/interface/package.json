@@ -16,7 +16,8 @@
     "test:vitest:coverage": "vitest run --coverage",
     "test:mutation": "stryker run",
     "test:mutation:report": "open reports/mutation/mutation-report.html",
-    "bundle:check": "node scripts/check-bundle-budgets.cjs"
+    "bundle:check": "node scripts/check-bundle-budgets.cjs",
+    "check:routes": "node scripts/check-route-duplication.cjs"
   },
   "dependencies": {
     "@fund-my-cause/types": "*",
