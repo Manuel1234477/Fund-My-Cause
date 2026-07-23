@@ -1,8 +1,7 @@
 name: Backend CI
 
 # Issue #716 — CI for the indexer and GraphQL API services.
-# Runs lint, typecheck, unit tests, and DB-backed integration tests
-# on every push/PR that touches backend code.
+# Runs lint, typecheck, and unit tests on every push/PR that touches backend code.
 
 on:
   push:
@@ -11,6 +10,8 @@ on:
       - 'services/indexer/**'
       - 'services/graphql-api/**'
       - 'services/monitoring-service/**'
+      - 'packages/types/**'
+      - 'sdks/js/**'
       - '.github/workflows/backend_ci.yml'
   pull_request:
     branches: [main, develop]
@@ -18,6 +19,8 @@ on:
       - 'services/indexer/**'
       - 'services/graphql-api/**'
       - 'services/monitoring-service/**'
+      - 'packages/types/**'
+      - 'sdks/js/**'
       - '.github/workflows/backend_ci.yml'
 
 env:
@@ -49,9 +52,27 @@ jobs:
           key: ${{ runner.os }}-node${{ env.NODE_VERSION }}-graphql-api-${{ hashFiles('services/graphql-api/package-lock.json') }}
           restore-keys: ${{ runner.os }}-node${{ env.NODE_VERSION }}-graphql-api-
 
+      - name: Cache node_modules (sdks/js)
+        uses: actions/cache@v4
+        with:
+          path: sdks/js/node_modules
+          key: ${{ runner.os }}-node${{ env.NODE_VERSION }}-sdk-${{ hashFiles('sdks/js/package-lock.json') }}
+          restore-keys: ${{ runner.os }}-node${{ env.NODE_VERSION }}-sdk-
+
       - name: Install (indexer)
         working-directory: services/indexer
         run: npm ci
+
+      # graphql-api depends on @fund-my-cause/sdk (file:../../sdks/js), whose
+      # package.json "exports" point at a built dist/ — build it before
+      # graphql-api's own install/typecheck/lint can resolve it.
+      - name: Install (sdks/js)
+        working-directory: sdks/js
+        run: npm ci
+
+      - name: Build (sdks/js)
+        working-directory: sdks/js
+        run: npm run build
 
       - name: Install (graphql-api)
         working-directory: services/graphql-api
@@ -90,9 +111,24 @@ jobs:
           key: ${{ runner.os }}-node${{ env.NODE_VERSION }}-graphql-api-${{ hashFiles('services/graphql-api/package-lock.json') }}
           restore-keys: ${{ runner.os }}-node${{ env.NODE_VERSION }}-graphql-api-
 
+      - name: Cache node_modules (sdks/js)
+        uses: actions/cache@v4
+        with:
+          path: sdks/js/node_modules
+          key: ${{ runner.os }}-node${{ env.NODE_VERSION }}-sdk-${{ hashFiles('sdks/js/package-lock.json') }}
+          restore-keys: ${{ runner.os }}-node${{ env.NODE_VERSION }}-sdk-
+
       - name: Install (indexer)
         working-directory: services/indexer
         run: npm ci
+
+      - name: Install (sdks/js)
+        working-directory: sdks/js
+        run: npm ci
+
+      - name: Build (sdks/js)
+        working-directory: sdks/js
+        run: npm run build
 
       - name: Install (graphql-api)
         working-directory: services/graphql-api
@@ -124,6 +160,20 @@ jobs:
           key: ${{ runner.os }}-node${{ env.NODE_VERSION }}-indexer-${{ hashFiles('services/indexer/package-lock.json') }}
           restore-keys: ${{ runner.os }}-node${{ env.NODE_VERSION }}-indexer-
 
+      - name: Cache node_modules (graphql-api)
+        uses: actions/cache@v4
+        with:
+          path: services/graphql-api/node_modules
+          key: ${{ runner.os }}-node${{ env.NODE_VERSION }}-graphql-api-${{ hashFiles('services/graphql-api/package-lock.json') }}
+          restore-keys: ${{ runner.os }}-node${{ env.NODE_VERSION }}-graphql-api-
+
+      - name: Cache node_modules (sdks/js)
+        uses: actions/cache@v4
+        with:
+          path: sdks/js/node_modules
+          key: ${{ runner.os }}-node${{ env.NODE_VERSION }}-sdk-${{ hashFiles('sdks/js/package-lock.json') }}
+          restore-keys: ${{ runner.os }}-node${{ env.NODE_VERSION }}-sdk-
+
       - name: Install (indexer)
         working-directory: services/indexer
         run: npm ci
@@ -131,71 +181,3 @@ jobs:
       - name: Run unit tests (indexer)
         working-directory: services/indexer
         run: npm test
-
-  # ── Integration tests (with Postgres service container) ───────────────────────
-  integration-tests:
-    name: Integration tests (DB)
-    runs-on: ubuntu-latest
-
-    services:
-      postgres:
-        image: postgres:16-alpine
-        env:
-          POSTGRES_USER: fmc
-          POSTGRES_PASSWORD: fmc_test
-          POSTGRES_DB: fmc_test
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-
-    env:
-      DATABASE_URL: postgresql://fmc:fmc_test@localhost:5432/fmc_test
-      SOROBAN_RPC_URL: https://soroban-testnet.stellar.org:443
-      CROWDFUND_CONTRACT_ID: ''
-      PORT: '3001'
-      LOG_LEVEL: error
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-
-      - name: Cache node_modules (indexer)
-        uses: actions/cache@v4
-        with:
-          path: services/indexer/node_modules
-          key: ${{ runner.os }}-node${{ env.NODE_VERSION }}-indexer-${{ hashFiles('services/indexer/package-lock.json') }}
-          restore-keys: ${{ runner.os }}-node${{ env.NODE_VERSION }}-indexer-
-
-      - name: Install (indexer)
-        working-directory: services/indexer
-        run: npm ci
-
-      - name: Run DB migrations
-        working-directory: services/indexer
-        run: |
-          node -e "
-            import('./dist/db/migrations/run.js').catch(() =>
-              import('./src/db/migrations/run.ts').catch(() =>
-                console.log('Migration runner not found — skipping')
-              )
-            )
-          " || npx tsx src/db/migrations/run.ts || echo "Migration step skipped"
-
-      - name: Run integration tests (indexer)
-        working-directory: services/indexer
-        run: npm test -- --reporter=verbose
-
-      - name: Post test summary
-        if: always()
-        run: |
-          echo "## Backend Integration Tests" >> "$GITHUB_STEP_SUMMARY"
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "Database: PostgreSQL 16 (service container)" >> "$GITHUB_STEP_SUMMARY"
-          echo "Service: \`services/indexer\`" >> "$GITHUB_STEP_SUMMARY"

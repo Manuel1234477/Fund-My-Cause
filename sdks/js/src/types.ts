@@ -1,13 +1,10 @@
 /** Wallet signing callback — matches WalletContext.signTx */
 export type SignFn = (xdr: string) => Promise<string>;
 
-export type CampaignStatus =
-  | "Active"
-  | "Successful"
-  | "Refunded"
-  | "Cancelled"
-  | "Paused"
-  | "Archived";
+// Canonical source: @fund-my-cause/types. Re-exported here so existing
+// `from "./types"` imports throughout this package keep working.
+import type { CampaignStatus } from "@fund-my-cause/types";
+export type { CampaignStatus };
 
 export type Category =
   | "Charity"

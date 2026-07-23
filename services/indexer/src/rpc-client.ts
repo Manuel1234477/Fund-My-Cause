@@ -1,4 +1,4 @@
-import Stellar from "@stellar/js-sdk";
+import { SorobanRpc } from "@stellar/stellar-sdk";
 import pino from "pino";
 
 export interface SorobanRPCConfig {
@@ -15,7 +15,7 @@ export interface IndexerEvent {
 }
 
 export class SorobanRPCClient {
-  private server: Stellar.SorobanRpc.Server;
+  private server: SorobanRpc.Server;
   private logger: pino.Logger;
   private config: SorobanRPCConfig;
   private lastLedger: number = 0;
@@ -23,7 +23,9 @@ export class SorobanRPCClient {
   constructor(config: SorobanRPCConfig, logger: pino.Logger) {
     this.config = config;
     this.logger = logger;
-    this.server = new Stellar.SorobanRpc.Server(config.url);
+    this.server = new SorobanRpc.Server(config.url, {
+      allowHttp: config.url.startsWith("http://"),
+    });
   }
 
   /**
@@ -31,8 +33,8 @@ export class SorobanRPCClient {
    */
   async connect(): Promise<boolean> {
     try {
-      const status = await this.server.getStatus();
-      this.lastLedger = parseInt(status.ledgerSequence, 10);
+      const status = await this.server.getLatestLedger();
+      this.lastLedger = status.sequence;
       this.logger.info(
         { ledger: this.lastLedger },
         "Connected to Soroban RPC"

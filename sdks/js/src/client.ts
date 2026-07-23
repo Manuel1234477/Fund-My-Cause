@@ -55,7 +55,7 @@ export class FmcClient {
   private async view<T>(method: string, args: Parameters<typeof nativeToScVal>[0][] = []): Promise<T> {
     // Use a well-known funded account for simulation — never submitted
     const DUMMY = "GAAZI4TCR3TY5OJHCTJC2A4QSY6CJWJH5IAJTGKIN2ER7LBNVKOCCWN";
-    const account = { accountId: () => DUMMY, sequenceNumber: () => "0", incrementSequenceNumber: () => {} } as unknown as Parameters<typeof TransactionBuilder>[0];
+    const account = { accountId: () => DUMMY, sequenceNumber: () => "0", incrementSequenceNumber: () => {} } as unknown as ConstructorParameters<typeof TransactionBuilder>[0];
 
     const tx = new TransactionBuilder(account, {
       fee: BASE_FEE,
