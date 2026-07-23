@@ -1,6 +1,5 @@
 import {
   rpc as SorobanRpc,
-  Server,
   Keypair,
   Contract,
   TransactionBuilder,
@@ -9,9 +8,7 @@ import {
   nativeToScVal,
   Address,
 } from "@stellar/stellar-sdk";
-import {
-  CampaignStatus,
-} from "../types.js";
+import type { CampaignStatus } from "../types.js";
 import type {
   Campaign,
   Contribution,
@@ -37,16 +34,16 @@ export interface ContractServiceConfig {
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
 const STATUS_MAP: Record<string, CampaignStatus> = {
-  Active: CampaignStatus.ACTIVE,
-  Successful: CampaignStatus.SUCCESSFUL,
-  Refunded: CampaignStatus.REFUNDED,
-  Cancelled: CampaignStatus.CANCELLED,
-  Paused: CampaignStatus.PAUSED,
-  Archived: CampaignStatus.ARCHIVED,
+  Active: "Active",
+  Successful: "Successful",
+  Refunded: "Refunded",
+  Cancelled: "Cancelled",
+  Paused: "Paused",
+  Archived: "Archived",
 };
 
 function mapStatus(s: string): CampaignStatus {
-  return STATUS_MAP[s] ?? CampaignStatus.ACTIVE;
+  return STATUS_MAP[s] ?? "Active";
 }
 
 function stroopsToIsoString(stroops: bigint): string {
@@ -58,12 +55,12 @@ const SOROBAN_DUMMY = "GAAZI4TCR3TY5OJHCTJC2A4QSY6CJWJH5IAJTGKIN2ER7LBNVKOCCWN";
 // ── Service ────────────────────────────────────────────────────────────────────
 
 export class ContractService {
-  private readonly server: Server;
+  private readonly server: SorobanRpc.Server;
   readonly networkPassphrase: string;
   readonly registryContractId?: string;
 
   constructor(config: ContractServiceConfig) {
-    this.server = new Server(config.rpcUrl);
+    this.server = new SorobanRpc.Server(config.rpcUrl);
     this.networkPassphrase = config.networkPassphrase;
     this.registryContractId = config.registryContractId;
   }
@@ -85,7 +82,7 @@ export class ContractService {
       accountId: () => SOROBAN_DUMMY,
       sequenceNumber: () => "0",
       incrementSequenceNumber: () => {},
-    } as unknown as Parameters<typeof TransactionBuilder>[0];
+    } as unknown as ConstructorParameters<typeof TransactionBuilder>[0];
 
     const tx = new TransactionBuilder(account, {
       fee: BASE_FEE,
@@ -221,7 +218,7 @@ export class ContractService {
           ids.map(async (id) => {
             try {
               const campaign = await this.fetchCampaign(id);
-              if (!campaign || campaign.status !== CampaignStatus.ACTIVE) return null;
+              if (!campaign || campaign.status !== "Active") return null;
               return campaign;
             } catch {
               return null;

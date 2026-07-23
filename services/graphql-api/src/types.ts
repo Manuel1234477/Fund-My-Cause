@@ -1,6 +1,6 @@
 import type { RedisClientType } from "redis";
 import type DataLoader from "dataloader";
-import type { PubSub } from "graphql-subscriptions";
+import type { PubSubService } from "./services/pubsub.js";
 // Canonical source: @fund-my-cause/types. Values are PascalCase ("Active",
 // not "ACTIVE"), matching the crowdfund contract's Status enum. The public
 // GraphQL schema still exposes SCREAMING_CASE enum names (see schema.ts) —
@@ -191,7 +191,7 @@ export interface Context {
   cache: any; // Redis cache service
   contractService: any; // Contract service
   dataLoader: DataLoaders;
-  pubsub: PubSub;
+  pubsub: PubSubService;
   authService: any; // Auth service
   user?: {
     address: string;

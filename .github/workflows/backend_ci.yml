@@ -178,6 +178,21 @@ jobs:
         working-directory: services/indexer
         run: npm ci
 
+      - name: Install (graphql-api)
+        working-directory: services/graphql-api
+        run: npm ci
+
       - name: Run unit tests (indexer)
         working-directory: services/indexer
         run: npm test
+
+      - name: Run unit tests (graphql-api)
+        working-directory: services/graphql-api
+        run: npm run test:coverage
+
+      - name: Upload coverage (graphql-api)
+        uses: codecov/codecov-action@v4
+        with:
+          files: ./services/graphql-api/coverage/coverage-final.json
+          flags: graphql-api
+          fail_ci_if_error: false

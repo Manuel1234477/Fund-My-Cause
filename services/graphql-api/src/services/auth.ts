@@ -24,7 +24,7 @@ export class AuthService {
         },
         this.jwtSecret,
         {
-          expiresIn: this.tokenExpiry,
+          expiresIn: this.tokenExpiry as jwt.SignOptions["expiresIn"],
           algorithm: "HS256",
         }
       );
